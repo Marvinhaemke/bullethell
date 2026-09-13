@@ -34,6 +34,7 @@ MODULES = [
     "src/particles.js",
     "src/bullets.js",
     "src/lasers.js",
+    "src/ships.js",
     "src/player.js",
     "src/autopilot.js",
     "src/attack.js",

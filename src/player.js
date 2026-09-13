@@ -1,8 +1,9 @@
 // Player ship: movement, focus mode, forward shots, bombs, death handling.
 
-import { TAU, PI, clamp } from './mathx.js';
+import { TAU, PI, HALF_PI, clamp } from './mathx.js';
 import { PLAY, C } from './config.js';
 import { drawShape } from './sprites.js';
+import { shipAt } from './ships.js';
 
 const SPEED_FREE = 4.55;
 const SPEED_FOCUS = 1.85;
@@ -12,12 +13,6 @@ export const PLAYER_SPEED = { free: SPEED_FREE, focus: SPEED_FOCUS };
 const FIRE_INTERVAL = 3;
 const HIT_RADIUS = 2.7;
 
-// How hard an unfocused shot steers, in radians per frame. It has to be sharp:
-// a homing shot turns through a circle of radius speed/turn, and if that is
-// wider than the boss's hitbox an overshooting shot orbits forever without
-// ever touching it. At 16.5px/frame this keeps the turn circle near 30px,
-// inside the ~32px boss radius, so shots that miss come back round and land.
-const HOMING_TURN = 0.55;
 // A homing shot that misses would otherwise circle forever.
 const SHOT_LIFE = 220;
 
@@ -105,35 +100,52 @@ export class Player {
   }
 
   /**
-   * The two stances trade damage against attention. Unfocused shots steer
-   * themselves to the boss, so you can give the screen your whole attention
-   * and still make steady progress. Focused shots fly straight and hit far
-   * harder, but you have to stand where the boss is and stay there.
+   * Fire the active ship's loadout for the current stance. Both stances mix
+   * weapon kinds; what the ship chooses is what focusing commits you to.
    */
   fire() {
     const g = this.game;
     g.sfx.play('shoot', 60);
-    if (this.focus) {
-      // Focused: two tight high-damage lances, no steering.
-      for (let i = -1; i <= 1; i += 2) {
-        const s = this.spawnShot();
-        s.x = this.x + i * 7; s.y = this.y - 12;
-        s.vx = 0; s.vy = -19;
-        s.dmg = 23; s.r = 3.6; s.len = 17;
-        s.color = C.cyan;
+    const ship = shipAt(g.settings.ship);
+    const list = this.focus ? ship.focused : ship.unfocused;
+    for (let i = 0; i < list.length; i++) this.fireWeapon(list[i]);
+  }
+
+  /** Spawn one weapon component's volley. */
+  fireWeapon(w) {
+    const n = Math.max(1, w.n);
+    // A fan is aimed: pointed at the boss at the instant it leaves the ship.
+    // Straight lanes are not -- lining them up is the whole cost of using
+    // them. Homing is aimed too, but only as a head start on its own steering.
+    const boss = this.game.boss;
+    const target = boss && boss.state === 'fight' ? boss : null;
+    const aim = target ? Math.atan2(target.y - (this.y - 11), target.x - this.x) : -HALF_PI;
+
+    for (let i = 0; i < n; i++) {
+      // -0.5 .. +0.5 across the volley, 0 for a single shot.
+      const t = n === 1 ? 0 : i / (n - 1) - 0.5;
+      const s = this.spawnShot();
+
+      let ang = -HALF_PI;
+      let ox = 0;
+      if (w.kind === 'straight') {
+        // Parallel lanes: no angle, just lateral offset.
+        ox = t * (w.lane || 0);
+      } else {
+        ang = aim + t * (w.spread || 0);
+        // Start the outer shots slightly wide so the fan reads as a fan.
+        ox = t * (w.spread || 0) * 40;
       }
-    } else {
-      // Unfocused: a three-lane spray that homes.
-      const angles = [-0.16, 0, 0.16];
-      for (let i = 0; i < 3; i++) {
-        const a = -Math.PI / 2 + angles[i];
-        const s = this.spawnShot();
-        s.x = this.x + angles[i] * 40; s.y = this.y - 10;
-        s.vx = Math.cos(a) * 16.5; s.vy = Math.sin(a) * 16.5;
-        s.dmg = 3.5; s.r = 4; s.len = 12;
-        s.homing = HOMING_TURN;
-        s.color = i === 1 ? C.teal : C.green;
-      }
+
+      s.x = this.x + ox;
+      s.y = this.y - 11;
+      s.vx = Math.cos(ang) * w.speed;
+      s.vy = Math.sin(ang) * w.speed;
+      s.dmg = w.dmg;
+      s.r = w.r;
+      s.len = w.len;
+      s.color = w.color;
+      s.homing = w.kind === 'homing' ? w.turn : 0;
     }
   }
 
@@ -209,6 +221,7 @@ export class Player {
   draw(g) {
     if (this.deathAnim > 0) return;
 
+    const ship = shipAt(this.game.settings.ship);
     const blink = this.invuln > 0 && (this.pulse >> 2) % 2 === 0;
     g.save();
     g.translate(this.x, this.y);
@@ -217,7 +230,7 @@ export class Player {
     // Focus aura: counter-rotating brackets that tighten as you slow down.
     if (this.focus) {
       const a = this.pulse * 0.05;
-      g.strokeStyle = C.cyan;
+      g.strokeStyle = ship.color;
       g.globalAlpha = (blink ? 0.3 : 0.7);
       g.lineWidth = 1.4;
       for (let k = 0; k < 2; k++) {
@@ -232,14 +245,14 @@ export class Player {
       g.globalAlpha = blink ? 0.45 : 1;
     }
 
-    // Hull: a simple triangle with a bright outline.
+    // Hull: the ship's own silhouette, dark-filled with a bright outline.
     g.rotate(-Math.PI / 2);
-    drawShape(g, 'tri', 11, '#0b1524', C.ice, 1.8);
+    drawShape(g, ship.shape, 11, '#0b1524', C.ice, 1.8);
     g.rotate(Math.PI / 2);
 
     // Wings react to lateral movement.
     const tilt = clamp(this.vx / SPEED_FREE, -1, 1);
-    g.strokeStyle = C.blue;
+    g.strokeStyle = ship.color;
     g.lineWidth = 1.6;
     g.globalAlpha *= 0.9;
     g.beginPath();
@@ -263,7 +276,7 @@ export class Player {
 
     // Thruster flicker.
     g.globalAlpha = 0.8;
-    g.fillStyle = C.cyan;
+    g.fillStyle = ship.color;
     const fl = 4 + Math.sin(this.pulse * 0.7) * 2;
     g.beginPath();
     g.moveTo(-3.5, 9); g.lineTo(0, 9 + fl); g.lineTo(3.5, 9);

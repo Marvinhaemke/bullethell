@@ -27,17 +27,18 @@ python3 build.py          # writes dist/index.html, a single self-contained file
 | Key | Action |
 | --- | --- |
 | Arrows / WASD | Move |
-| **Shift** (hold) | Focus — half speed, tighter and stronger shot, hitbox shown |
-| **Z** / Space | Fire (hold) — unfocused shots home, focused shots fly straight |
+| **Shift** (hold) | Focus — half speed, the ship's heavy armament, hitbox shown |
+| **Z** / Space | Fire (hold) — unfocused mixes straight, spread and homing |
 | **X** / C | Bomb — clears bullets, damages the boss, grants invulnerability |
 | **Esc** / P | Pause |
 | Shift + **R** | Restart the current boss |
 | **M** | Mute |
 
-Three menu options worth knowing about:
+Four menu options worth knowing about:
 
 | Option | |
 | --- | --- |
+| **SHIP** | Four loadouts — see [Ships](#ships). They differ in what they shoot, never in how fast they move. |
 | **AUTOFIRE** | Fire without holding anything. On by default; holding Z still works. |
 | **AUTOPILOT** | A dodging bot plays for you. It is the same bot `npm run survive` uses to prove patterns are dodgeable, and it only ever produces inputs a human has — nine headings, focused or not, at the game's own speeds. Bombs and pause stay yours. |
 | **SHOT OPACITY** | Dim your own shots (down to hidden) so enemy bullets read more clearly in dense patterns. |
@@ -74,13 +75,46 @@ ends when its health does. Each one still has a par time, and clearing under
 par is what pays the speed bonus.
 
 That works because the two firing stances trade damage against attention.
-Unfocused shots **home**, so you can give the screen your whole attention and
-still make steady progress: playing a boss entirely unfocused clears each
-pattern in about its par time. Focused shots fly straight and hit roughly six
-times harder, but only if you stand where the boss is and stay there.
+Every ship's **unfocused** loadout mixes straight, spread and homing fire, and
+enough of it lands without aiming that you can give the screen your whole
+attention and still make steady progress: dodging a pattern and never focusing
+clears it in about its par time. **Focusing** is the ship's specialty, worth
+roughly two to three times as much — but only while you stand where the boss is.
 
 The one exception is Chaos Engine's final pattern, which is a **survival**
 phase: there the clock is the win condition, and running it out is the clear.
+
+<a id="ships"></a>
+## Ships
+
+Four loadouts, chosen in the menu. Movement speed is identical across the
+roster — they differ in what they shoot, not how they dodge, which is also what
+keeps the autopilot's planning valid for all of them.
+
+Only fans and seekers are aimed at the boss when they leave the ship. Straight
+lanes are not: lining them up is the entire cost of using them, and it is why
+the two ships built around them are the slowest while dodging and the fastest
+once planted.
+
+| Ship | Unfocused | Focused | |
+| --- | --- | --- | --- |
+| **VECTOR** | 1 straight · 2 spread · 2 homing | two forward lanes | Balanced. Good everywhere, best nowhere. |
+| **TRACER** | 3 homing · 2 spread | three seekers | Lands wherever you are. Least punished for bad position, least rewarded for good. |
+| **BLOOM** | 4 spread · 1 homing | a five-wide fan | Forgiving aim. The fan spends its outer shots on empty space at range. |
+| **LANCE** | 2 straight · 1 spread · 1 homing | one heavy bolt | Highest ceiling, no margin. Dead weight unless you are under the boss. |
+
+Measured with `npm run ships`, as a multiple of par time (lower is faster):
+
+| | dodging, never focused | lined up, focused |
+| --- | --- | --- |
+| VECTOR | 1.00 | 0.49 |
+| TRACER | 0.93 | 0.46 |
+| BLOOM | 1.06 | 0.60 |
+| LANCE | 1.15 | 0.35 |
+
+The per-phase columns matter more than the totals: BLOOM and LANCE are almost
+exactly anti-correlated, because the patterns where the boss stands still are
+the ones where straight lanes land and a long-range fan wastes its edges.
 
 ### 1 · SENTINEL — *Rotational Primer*
 Clean rotational geometry. Precessing rings, two counter-wound spiral arms whose
@@ -179,12 +213,14 @@ src/
   patterns.js       shared movement scripts, cellular automata, logistic map
   bullets.js        data-driven bullet pool
   autopilot.js      the dodging bot: in-game autopilot and test harness
+  ships.js          the ship roster, as weapon-component data
   player.js  lasers.js  particles.js  sprites.js
   ui.js  input.js  audio.js  storage.js  config.js  mathx.js  rng.js
   bosses/boss1..5.js
 tools/
   smoke.mjs         headless play-through of every boss at every difficulty
   census.mjs        per-phase bullet-count and frame-cost report
+  ships.mjs         per-ship clear time, dodging vs lined up
   shots.mjs         screenshot every phase
   probe.mjs         damage throughput and phase pacing
 ```
@@ -198,6 +234,7 @@ npm run survive     # can a player actually dodge each pattern?
 npm run margins     # how much dodging room each pattern really has
 npm run deadzones   # can you park anywhere and ignore a pattern?
 npm run bot         # autopilot quality: survival, gap width, idle drift
+npm run ships       # is every ship worth picking?
 npm run census      # per-phase bullet counts and render cost
 npm run lint
 ```

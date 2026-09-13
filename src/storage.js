@@ -25,6 +25,9 @@ export function loadSettings() {
   return {
     diff: Number.isInteger(s.diff) ? s.diff : 2,
     life: Number.isInteger(s.life) ? s.life : 1,
+    // Upper bound is left to shipAt(), so this module stays free of any
+    // dependency on the roster.
+    ship: Number.isInteger(s.ship) && s.ship >= 0 ? s.ship : 0,
     sound: s.sound !== false,
     // Autofire on by default: there is never a reason to withhold fire here,
     // and holding Z still works for anyone who prefers it.

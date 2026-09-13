@@ -9,6 +9,7 @@ import { Sfx } from './audio.js';
 import { BulletPool } from './bullets.js';
 import { Particles } from './particles.js';
 import { Player } from './player.js';
+import { SHIPS, shipAt } from './ships.js';
 import { Autopilot } from './autopilot.js';
 import { Boss, hexAlpha } from './boss.js';
 import { BOSSES } from './bosses/index.js';
@@ -52,6 +53,7 @@ export class Game {
 
   get diff() { return DIFFICULTIES[this.settings.diff]; }
   get lifeMode() { return LIFE_MODES[this.settings.life]; }
+  get ship() { return shipAt(this.settings.ship); }
 
   // -------------------------------------------------------------------------
   // Menus
@@ -75,6 +77,13 @@ export class Game {
       valueColor: () => (this.settings.life === 2 ? C.red : this.settings.life === 0 ? C.green : C.amber),
       change: (d) => cycle('life', LIFE_MODES, d),
       hint: () => this.lifeMode.blurb,
+    };
+    const shipItem = {
+      label: 'SHIP',
+      value: () => this.ship.name,
+      valueColor: () => this.ship.color,
+      change: (d) => cycle('ship', SHIPS, d),
+      hint: () => this.ship.blurb,
     };
     const soundItem = {
       label: 'SOUND',
@@ -127,6 +136,7 @@ export class Game {
       { separator: true },
       diffItem,
       lifeItem,
+      shipItem,
       { separator: true },
       autofireItem,
       autopilotItem,
@@ -156,6 +166,7 @@ export class Game {
       { separator: true },
       diffItem,
       lifeItem,
+      shipItem,
       { separator: true },
       autofireItem,
       autopilotItem,
@@ -737,14 +748,16 @@ export class Game {
       run ? run.bombs : 0, this.lifeMode.bombs, C.cyan, 'circle', 9, 14);
 
     y += 90;
-    panel(g, x, y, w, 62);
+    panel(g, x, y, w, 86);
     text(g, 'DIFFICULTY', x + 12, y + 20, { size: 10, color: '#63719a', track: 2 });
     text(g, this.diff.name, x + w - 12, y + 21, { size: 14, weight: 700, align: 'right', color: this.diff.color, track: 1 });
     text(g, 'MODE', x + 12, y + 44, { size: 10, color: '#63719a', track: 2 });
     text(g, this.lifeMode.name, x + w - 12, y + 45, { size: 12, weight: 700, align: 'right', color: C.dust, track: 1 });
+    text(g, 'SHIP', x + 12, y + 68, { size: 10, color: '#63719a', track: 2 });
+    text(g, this.ship.name, x + w - 12, y + 69, { size: 12, weight: 700, align: 'right', color: this.ship.color, track: 1 });
 
     // Boss roster with progress ticks.
-    y += 76;
+    y += 100;
     text(g, 'ROSTER', x, y, { size: 10, color: '#63719a', track: 2 });
     y += 12;
     for (let i = 0; i < BOSSES.length; i++) {
@@ -890,11 +903,48 @@ export class Game {
     text(g, 'DOTS = EXTRA PATTERN LAYERS', px + 16, py + 218, { size: 9, color: '#4d597d', track: 1 });
     text(g, '× = BULLET DENSITY', px + 16, py + 234, { size: 9, color: '#4d597d', track: 1 });
 
+    this.drawShipPanel(g, px, py + 268);
+
     const rec = getRecord(this.recordKey('rush', 'all'));
     if (rec) {
       text(g, 'BEST RUSH · ' + this.diff.name + ' · ' + this.lifeMode.name,
         124, 640, { size: 10, color: '#63719a', track: 2 });
       text(g, rec.toLocaleString(), 124, 668, { size: 22, weight: 700, color: C.amber });
+    }
+  }
+
+  /**
+   * Armament readout: what the selected ship fires in each stance. The point
+   * of the roster is the trade between stances, so both are shown side by
+   * side rather than only the one you are holding.
+   */
+  drawShipPanel(g, px, py) {
+    const ship = this.ship;
+    panel(g, px, py, 264, 140);
+    text(g, 'ARMAMENT', px + 16, py + 24, { size: 10, color: '#63719a', track: 2 });
+
+    g.save();
+    g.translate(px + 232, py + 26);
+    g.rotate(-Math.PI / 2);
+    g.shadowColor = ship.color; g.shadowBlur = 14;
+    drawShape(g, ship.shape, 11, '#0b1524', ship.color, 1.6);
+    g.shadowBlur = 0;
+    g.restore();
+
+    text(g, ship.name, px + 16, py + 48, { size: 17, weight: 700, color: ship.color, track: 3 });
+
+    const stances = [['UNFOCUSED', ship.unfocused], ['FOCUSED', ship.focused]];
+    for (let i = 0; i < stances.length; i++) {
+      const [name, list] = stances[i];
+      const yy = py + 76 + i * 32;
+      text(g, name, px + 16, yy, { size: 9, color: '#4d597d', track: 1 });
+      let cx = px + 16;
+      for (let k = 0; k < list.length; k++) {
+        const w = list[k];
+        const label = `${w.n}×${w.kind.toUpperCase()}`;
+        text(g, label, cx, yy + 16, { size: 10, weight: 700, color: w.color, track: 1 });
+        cx += label.length * 7 + 12;
+      }
     }
   }
 
@@ -944,13 +994,14 @@ export class Game {
       ['ARROWS / WASD', 'Move'],
       ['SHIFT (hold)', 'Focus: half speed, tight shot, visible hitbox'],
       ['Z / SPACE', 'Fire (hold) — or turn AUTOFIRE on and forget it'],
-      ['', 'Unfocused shots home. Focused shots fly straight and hit ~6x harder.'],
+      ['', 'Unfocused mixes straight, spread and homing. Focus is the ship’s specialty.'],
       ['X / C', 'Bomb: clears bullets, damages boss, grants invulnerability'],
       ['ESC / P', 'Pause'],
       ['SHIFT + R', 'Restart the current boss'],
       ['M', 'Mute'],
     ];
     const options = [
+      ['SHIP', 'Four loadouts. They differ in what focusing commits you to, not in speed.'],
       ['AUTOFIRE', 'Fire without holding anything. On by default.'],
       ['AUTOPILOT', 'A dodging bot plays for you — the same one the tests use.'],
       ['SHOT OPACITY', 'Dim your own shots so enemy bullets read more clearly.'],
