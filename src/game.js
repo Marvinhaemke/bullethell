@@ -7,6 +7,7 @@ import {
 import { Input } from './input.js';
 import { Sfx, SOUND_LEVELS } from './audio.js';
 import { Music } from './music.js';
+import { DeathLog } from './deaths.js';
 import { BulletPool } from './bullets.js';
 import { Particles } from './particles.js';
 import { Player } from './player.js';
@@ -27,6 +28,7 @@ export class Game {
     this.input = new Input(window);
     this.sfx = new Sfx();
     this.music = new Music();
+    this.deaths = new DeathLog();
     this.settings = loadSettings();
     this.sfx.level = this.settings.sound;
     this.music.setVolume(this.settings.music);
@@ -347,9 +349,11 @@ export class Game {
     run.bombs = this.lifeMode.bombs;
   }
 
-  playerDied() {
+  playerDied(killer = null, cause = 'bullet') {
     const run = this.run;
     const p = this.player;
+    // Before clearArea below wipes the evidence.
+    this.deaths.record(this, killer, cause);
     this.sfx.play('death');
     this.addShake(18);
     this.flash = 0.55;
@@ -534,7 +538,7 @@ export class Game {
       if (vulnerable) {
         const hit = b.hr + p.hitR;
         if (d2 < hit * hit) {
-          if (p.hit()) this.playerDied();
+          if (p.hit()) this.playerDied(b, 'bullet');
           return;
         }
       }
@@ -555,7 +559,7 @@ export class Game {
     if (vulnerable) {
       for (let i = 0; i < this.lasers.length; i++) {
         if (this.lasers[i].hits(p.x, p.y, p.hitR)) {
-          if (p.hit()) this.playerDied();
+          if (p.hit()) this.playerDied(null, 'laser');
           return;
         }
       }
@@ -1108,6 +1112,28 @@ export class Game {
       { size: 30, weight: 700, color: C.amber, align: 'right' });
     text(g, `GRAZE ${run.graze.toLocaleString()}   ·   MISSES ${run.deaths}   ·   BOMBS ${run.bombsUsed}`,
       x + 20, y + 30, { size: 12, color: C.dust, track: 1 });
+
+    // Where the misses actually came from. The per-boss column above says how
+    // many; this says which pattern and what kind of bullet, which is the part
+    // worth knowing.
+    const worst = this.deaths.summary().slice(0, 3);
+    if (worst.length) {
+      y += 62;
+      text(g, 'WHERE YOU DIED', x + 20, y, { size: 10, color: '#63719a', track: 2 });
+      for (let i = 0; i < worst.length; i++) {
+        const r = worst[i];
+        const top = Object.entries(r.traits).sort((a, b) => b[1] - a[1])[0];
+        const how = r.causes.laser >= r.n ? 'beams'
+          : top ? `${top[0]} bullets` : 'bullets';
+        text(g, `${r.phase}`, x + 20, y + 22 + i * 20,
+          { size: 12, color: C.dust, track: 0.5 });
+        text(g, `${r.diff.toUpperCase()}`, x + 300, y + 22 + i * 20,
+          { size: 11, color: '#63719a', align: 'right' });
+        text(g, how, x + 440, y + 22 + i * 20, { size: 11, color: '#7d8db3', align: 'right' });
+        text(g, `x${r.n}`, x + 500, y + 22 + i * 20,
+          { size: 12, weight: 700, color: C.red, align: 'right' });
+      }
+    }
 
     text(g, 'PRESS Z TO CONTINUE', VIEW.w / 2, 700,
       { size: 13, align: 'center', color: C.amber, track: 4 });

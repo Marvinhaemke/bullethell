@@ -248,16 +248,28 @@ const ui = await page.evaluate(() => {
   step(70);
   out.bombUsed = bombsBefore - game.run.bombs;
 
-  // deaths drain lives and eventually end the run
+  // deaths drain lives and eventually end the run, and each one is logged
   out.livesStart = game.run.lives;
+  game.deaths.clear();
+  const fake = { color: '#ff0000', shape: 'circle', hr: 5, vx: 0, vy: 3,
+    age: 20, turn: 0.02, ax: 0, ay: 0, accel: 0, bounce: 0, homeT: 0,
+    stopT: 0, goT: 0, orbit: null, frozen: false, split: null };
   for (let i = 0; i < 4; i++) {
     game.player.invuln = 0;
     game.player.hit();
-    game.playerDied();
+    game.playerDied(fake, 'bullet');
     step(60);
   }
   out.livesEnd = game.run.lives;
   out.gameOverState = game.state;
+  // The log is the raw material for future tuning, so it has to survive a
+  // reload and name the pattern and the behaviour that did the killing.
+  out.deathsLogged = game.deaths.entries.length;
+  const last = game.deaths.entries[game.deaths.entries.length - 1] || {};
+  out.deathPhase = last.phaseName || null;
+  out.deathTraits = last.killer ? last.killer.traits.join('+') : null;
+  out.deathPersisted = JSON.parse(localStorage.getItem('bosrush.deaths.v1') || '[]').length;
+  out.deathSummary = game.deaths.summary({ includeAutopilot: true }).length;
   game.draw();
 
   // clearing a boss advances / produces results
@@ -284,6 +296,11 @@ if (ui.paused !== 'pause') failures.push(`pause failed (got ${ui.paused})`);
 if (ui.resumed !== 'play') failures.push(`resume failed (got ${ui.resumed})`);
 if (ui.bombUsed !== 1) failures.push(`bomb did not consume a stock (got ${ui.bombUsed})`);
 if (ui.gameOverState !== 'gameover') failures.push(`3-life mode did not reach game over (got ${ui.gameOverState})`);
+if (ui.deathsLogged !== 4) failures.push(`death log missed deaths (got ${ui.deathsLogged} of 4)`);
+if (ui.deathPersisted !== 4) failures.push(`death log did not persist (got ${ui.deathPersisted} of 4)`);
+if (!ui.deathPhase) failures.push('death log did not record which pattern');
+if (ui.deathTraits !== 'curving') failures.push(`death log misread the bullet (got ${ui.deathTraits})`);
+if (ui.deathSummary < 1) failures.push('death log summary came back empty');
 if (ui.afterClear !== 'results') failures.push(`boss clear did not reach results (got ${ui.afterClear})`);
 
 await browser.close();

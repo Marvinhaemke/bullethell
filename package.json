@@ -17,6 +17,7 @@
     "shots": "node tools/shots.mjs",
     "deadzones": "node tools/safespots.mjs",
     "autopsy": "node tools/autopsy.mjs",
+    "deaths": "node tools/deaths.mjs",
     "ships": "node tools/ships.mjs",
     "bot": "node tools/botbench.mjs",
     "music": "node tools/music.mjs",

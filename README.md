@@ -223,6 +223,47 @@ prints a 10th-percentile column so you can see which. And `drift` only covers
 bullets already on screen — a volley that splits into three is scored as the new
 bullets it becomes, not as the prediction failure it also is.
 
+## The death log
+
+Every number in `npm run difficulty` is a **model** of a player: straight-line
+prediction, a movement budget, a reaction window. Every number in `npm run
+margins` comes from a bot that plans straight lines, cannot orbit a sweep, and
+has no idea a pattern is about to do something. Both are useful and neither is
+a person.
+
+So the game records what actually kills you. `src/deaths.js` logs each death at
+the collision site — where the killing bullet is still in hand, rather than
+guessed afterwards from what happened to be nearby, which goes wrong exactly
+when the screen is busiest:
+
+| | |
+| --- | --- |
+| where | boss, pattern, difficulty, life mode, ship, seconds into the phase, position |
+| what | the bullet's colour, shape, radius, speed, and whether it was closing on you |
+| how | its behaviour — curving, bouncing, homing, accelerating, stop-go, splitting, orbiting — read off the bullet's own fields, so the list cannot go stale when a pattern changes |
+| context | bullets on screen, how many were near you, and your clearance at the instant of death |
+
+That last row is the point: `clearance` is the same quantity `npm run
+difficulty` calls `room`, so a phase whose deaths cluster at a clearance far
+above its measured room is one the model is getting wrong.
+
+The log persists to `localStorage`, capped at 400, and goes nowhere else. The
+results screen shows the top three patterns you died on. To get the raw data
+out, open the console on the game page:
+
+```js
+copy(__BOSSRUSH.game.deaths.export())   // to the clipboard
+__BOSSRUSH.game.deaths.export()         // or just read it
+```
+
+Save that to a file and `node tools/deaths.mjs deaths.json` summarises it.
+`npm run deaths -- --bot` fills a log from the dodging bot instead, which is
+useful for regression but not for tuning — the bot dies to things people do not,
+and survives things people do not. It says so plainly: run it today and every
+single death across all twenty patterns is a beam, most of them with 120–200px
+of bullet clearance, which is the straight-line planner walking into a sweep it
+cannot express a curve around.
+
 <a id="music"></a>
 ## Music
 
@@ -365,6 +406,7 @@ src/
   autopilot.js      the dodging bot: in-game autopilot and test harness
   ships.js          the ship roster, as weapon-component data
   music.js          streams whatever mp3s are in music/
+  deaths.js         the death log: what killed you, where, and how crowded
   player.js  lasers.js  particles.js  sprites.js
   ui.js  input.js  audio.js  storage.js  config.js  mathx.js  rng.js
   bosses/boss1..5.js
@@ -376,6 +418,7 @@ tools/
   audiokeys.mjs     sound levels, key bindings, the music drop-in path
   autopsy.mjs       what kills you on one phase, and how pressure builds
   difficulty.mjs    difficulty on space AND predictability, not space alone
+  deaths.mjs        read a death log back, or fill one with the bot
   music.mjs         the music manifest scanner, and a CLI to write it out
   vercel-build.mjs  assemble public/ for a static deploy
   shots.mjs         screenshot every phase
@@ -392,6 +435,7 @@ npm run margins     # how much dodging room each pattern really has
 npm run difficulty  # ...and how much of that room you can rely on
 npm run deadzones   # can you park anywhere and ignore a pattern?
 npm run autopsy -- --boss 5 --phase 4   # why is this phase hard?
+npm run deaths -- --bot                # what actually kills the bot
 npm run bot         # autopilot quality: survival, gap width, idle drift
 npm run ships       # is every ship worth picking?
 npm run audio       # sound levels, key bindings, music end to end

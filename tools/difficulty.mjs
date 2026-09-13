@@ -85,6 +85,9 @@ const STARTS = num('--starts', 2);
 // since a person reads a curve as a line and is wrong by exactly this much.
 const HORIZON = num('--horizon', 26);
 const AIM_COST = num('--aim-cost', 0.5);
+// A phase this far below its column's typical safety is out of line with the
+// rest of the game at that difficulty, whatever the absolute pixels say.
+const OUTLIER = num('--outlier', 0.75);
 const ONLY_BOSS = args.includes('--boss') ? num('--boss', 1) - 1 : null;
 const ONLY_PHASE = args.includes('--phase') ? num('--phase', 1) - 1 : null;
 const DETAIL = args.includes('--detail');
@@ -357,7 +360,12 @@ if (DETAIL) {
         driftSum += m.drift;
         aimSum += m.aimed;
       }
-      rows.push({ boss: roster[b].name, name: roster[b].phases[ph], cells });
+      rows.push({
+        boss: roster[b].name,
+        name: roster[b].phases[ph],
+        label: `${ph + 1}. ${roster[b].phases[ph]}`,
+        cells,
+      });
       console.log(
         roster[b].name.padEnd(14) +
         `${ph + 1}. ${roster[b].phases[ph]}`.padEnd(28) +
@@ -382,10 +390,39 @@ if (DETAIL) {
       }
     }
   }
-  console.log('\nColumn medians: ' + DIFFN.map((n, d) => {
+  const medians = DIFFN.map((_, d) => {
     const v = rows.map((r) => r.cells[d]).sort((a, b) => a - b);
-    return `${n} ${v[v.length >> 1].toFixed(1)}px`;
-  }).join('   '));
+    return v[v.length >> 1];
+  });
+  console.log('\nColumn medians: ' +
+    DIFFN.map((n, d) => `${n} ${medians[d].toFixed(1)}px`).join('   '));
+
+  // The same table as a fraction of its column, which is the view that makes
+  // an outlier obvious: a phase at 0.5 is half as safe as a typical phase at
+  // the same difficulty, whatever the absolute numbers happen to be.
+  console.log('\nAs a fraction of the column median (1.00 = a typical phase; ' +
+    `below ${OUTLIER.toFixed(2)} is flagged):`);
+  console.log('BOSS          PHASE                       ' +
+    DIFFN.map((n) => n.slice(0, 4).padStart(9)).join(''));
+  console.log('-'.repeat(44 + 9 * 5));
+  const outliers = [];
+  for (const r of rows) {
+    const cells = r.cells.map((v, d) => v / medians[d]);
+    console.log(
+      r.boss.padEnd(14) + r.label.padEnd(28) +
+      cells.map((v) => (v < OUTLIER ? `*${v.toFixed(2)}` : v.toFixed(2)).padStart(9)).join(''));
+    cells.forEach((v, d) => {
+      if (v < OUTLIER) outliers.push({ boss: r.boss, name: r.name, d, v, px: r.cells[d] });
+    });
+  }
+  if (outliers.length) {
+    outliers.sort((a, b) => a.v - b.v);
+    console.log(`\n${outliers.length} cell(s) below ${OUTLIER.toFixed(2)}, tightest first:`);
+    for (const o of outliers.slice(0, 12)) {
+      console.log(`  - ${o.boss} ${o.name} @ ${DIFFN[o.d]}: ` +
+        `${o.px.toFixed(1)}px, ${o.v.toFixed(2)} of the column`);
+    }
+  }
 
   if (bumps.length) {
     console.log(`\n${bumps.length} non-monotonic step(s) -- an easier tier that is not easier:`);

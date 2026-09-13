@@ -48,7 +48,7 @@ function* ballisticRain(A) {
     }
     A.sfx('shot', 80);
     k++;
-    yield A.w(18);
+    yield A.gap(18);
   }
 }
 
@@ -62,7 +62,11 @@ function* maelstrom(A) {
     // Launching at a fixed angle to the radius is what makes a logarithmic
     // spiral: the constant pitch draws the arms, the gentle turn curls them.
     // (Firing straight outward just produces uniform noise.)
-    const arms = A.n(3, 2) + 1;
+    // 3/4/5/6/6. The lower half needed to stop sharing a count -- Novice and
+    // Easy were both on 3, which left the cadence carrying the whole bottom of
+    // the ladder -- and the top needed a ceiling, because eight arms closed
+    // Lunatic down to half a typical phase's room.
+    const arms = Math.min(6, A.n(4, 2) + 1);
     const pitch = 1.02;
     for (let a = 0; a < arms; a++) {
       const ang = th + a * TAU / arms;
@@ -90,7 +94,12 @@ function* maelstrom(A) {
     }
     th += 0.105;
     A.sfx('shot', 130);
-    yield A.w(5);
+    // A.gap rather than A.w: these bullets curve, so clampLife keeps them on
+    // screen for a span/speed that grows as the easier tiers slow them down,
+    // which cancelled most of the density drop. Arms only run 3 to 6 across
+    // the whole ladder, so that cancellation left Novice measuring tighter
+    // than Easy -- the one phase in the game where the setting bought nothing.
+    yield A.gap(9);
   }
 }
 
@@ -154,7 +163,7 @@ function* curveshot(A) {
   let k = 0;
   while (true) {
     const sgn = k % 2 ? 1 : -1;
-    const n = A.n(7, 4);
+    const n = A.n(6, 4);
     const aim = A.aimLead(undefined, undefined, 2.8);
 
     // `turn` is an angular rate, so the radius a bullet curves through is
@@ -175,7 +184,7 @@ function* curveshot(A) {
     A.fan({ n, spread: 1.1, angle: aim - sgn * bend * 0.5, speed: A.spd(2.85), turn: sgn * curve, turnDecay: decay });
     A.fan({ n, spread: 1.1, angle: aim + sgn * bend * 0.5, speed: A.spd(2.4), turn: -sgn * curve, turnDecay: decay, color: C.orange });
     if (A.L(2) && k % 2 === 0) {
-      A.ring({ n: A.n(12, 8), speed: A.spd(1.9), angle: k * 0.5, shape: 'pellet', color: C.red, r: 4.2 });
+      A.ring({ n: A.n(10, 7), speed: A.spd(1.9), angle: k * 0.5, shape: 'pellet', color: C.red, r: 4.2 });
     }
     if (A.L(3) && k % 3 === 0) {
       for (let i = 0; i < A.n(3, 1); i++) {
@@ -189,7 +198,10 @@ function* curveshot(A) {
     }
     A.sfx('shot', 80);
     k++;
-    yield A.w(24);
+    // A.gap for the same reason as Maelstrom: both fans curve, so their time
+    // on screen scales with 1/speed and the easier tiers kept the crossfire
+    // they were supposed to be spared.
+    yield A.gap(26);
   }
 }
 
