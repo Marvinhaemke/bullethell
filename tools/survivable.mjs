@@ -16,16 +16,16 @@
 // game's own speeds, through the game's own input handling).
 //
 // The converse does NOT hold. A death may mean the pattern is unfair, or just
-// that the bot played badly: it plans one move at a time over a short horizon
-// and has no notion of setting up for the next wave. So a failure is a flag
-// for review, never a verdict of "impossible".
+// that the bot played badly: it evaluates straight-line headings only and has
+// no memory, so it cannot plan a curve or set up for a wave it can see
+// coming. A failure is a flag for review, never a verdict of "impossible".
 //
 // KNOWN BLIND SPOT: the beam phases (Chaos Engine's "Sweep Lasers" and
-// "Final Theorem"). A rotating beam forces a commitment much earlier than the
-// 16-frame horizon can see -- you have to pick a side of the sweep and go.
-// The bot gets a telegraph-aversion term to compensate, but it still reads
-// these two far more pessimistically than the rest, so treat their numbers as
-// a floor on the bot's skill rather than a measurement of the pattern.
+// "Final Theorem"), which are where every remaining bot death lands. A
+// rotating beam outruns the player past a radius of speed/spin, so surviving
+// one means orbiting the boss -- a curve, which a straight-line planner
+// cannot express. Treat those two rows as a floor on the bot's skill rather
+// than a measurement of the pattern.
 //
 // THE LADDER
 //
@@ -284,7 +284,8 @@ if (!SWEEP) {
     console.log(`${failures.length} phase/difficulty pairs the bot could not clear:`);
     for (const f of failures) console.log('  - ' + f);
     console.log('\nA failure is a flag for review, not proof the pattern is impossible:');
-    console.log('the bot plans one move ahead over 16 frames and cannot set up for a wave.');
+    console.log('the bot evaluates straight-line headings only, so it cannot plan the curve');
+    console.log('a rotating beam demands, nor set up for a wave it can already see coming.');
     process.exit(1);
   }
   console.log('Every phase is dodgeable at its required hitbox size.');
