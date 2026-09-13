@@ -134,8 +134,16 @@ function* lissajousChoir(A) {
 // ring pushes out from the centre. Inward and outward pressure at once.
 function* convergence(A) {
   let k = 0;
+
+  // What makes this phase hard is how many waves are converging at once, and
+  // that number used to be the same at every difficulty -- 7.1 overlapping
+  // waves on Novice against 8.3 on Lunatic -- so the easier tiers got thinner
+  // waves and slower bullets but no relief at all on the squeeze itself, which
+  // is the thing you actually die to. A.gap() is A.w() corrected for that.
+  const wave = A.gap(38);
+
   while (true) {
-    const n = A.n(13, 7);
+    const n = A.n(12, 6);
     for (let i = 0; i < n; i++) {
       const u = (i + 0.5) / n + k * 0.071;
       const p = A.borderPoint(u);
@@ -147,7 +155,7 @@ function* convergence(A) {
       });
     }
     A.ring({
-      n: A.n(16, 10), speed: A.spd(1.15), angle: k * 0.41,
+      n: A.n(16, 8), speed: A.spd(1.15), angle: k * 0.41,
       accel: 0.014, maxSpeed: A.spd(4.2),
       shape: 'circle', color: C.red, r: 5,
     });
@@ -172,7 +180,7 @@ function* convergence(A) {
     }
     A.sfx('shot', 80);
     k++;
-    yield A.w(34);
+    yield wave;
   }
 }
 
@@ -185,23 +193,46 @@ function* finalTheorem(A) {
   let x = 0.6137;
   const ringEvery = A.w(15);
   const fanEvery = A.w(52);
-  const caEvery = A.w(22);
+  // A.gap() rather than A.w(): rule 30 fires a fixed 37-cell automaton, so the
+  // bullets per event never scaled with difficulty either, and the population
+  // on screen came out almost flat from Novice to Lunatic.
+  const caEvery = A.gap(22);
   const laserEvery = A.w(300);
 
-  while (true) {
-    // Continuous phyllotaxis stream.
-    A.one({
-      angle: i * GOLDEN_ANGLE,
-      speed: A.spd(2.0 + 0.6 * Math.sin(i * 0.02)),
-      shape: 'pellet', r: 4.2,
-      color: i % 3 === 0 ? C.amber : C.orange,
-      life: 620,
-    });
+  // The stream used to emit one bullet per frame at every difficulty, which
+  // made this phase as dense on Novice as on Lunatic -- measured at 777 vs 777
+  // bullets, where every other phase runs Novice at about a sixth of Lunatic.
+  // The count never scaled, and slower bullets simply stayed on screen longer,
+  // cancelling the little the easier tiers did gain.
+  //
+  // What matters is the population on screen, which is rate x time-to-cross,
+  // and time-to-cross is itself proportional to 1/speed. So emitting at a rate
+  // proportional to density x speed leaves a population proportional to
+  // density alone -- the same way every other layer here already behaves,
+  // because their counts go through A.n().
+  const streamRate = A.D.density * A.D.speed * 0.55;
+  let streamAcc = 0;
+  let s = 0;                  // stream index: advances per bullet, not per frame
 
-    // Chaotic scatter woven through it.
-    if (i % 3 === 0) {
-      x = logistic(x, 3.94);
-      A.one({ angle: x * TAU, speed: A.spd(1.6 + x * 2.2), shape: 'circle', r: 4.6, color: C.red, life: 620 });
+  while (true) {
+    // Continuous phyllotaxis stream, plus the chaotic scatter woven through
+    // it. Both step with `s`, so the spiral is identical at every difficulty
+    // and only how fast it is drawn changes.
+    streamAcc += streamRate;
+    while (streamAcc >= 1) {
+      streamAcc -= 1;
+      A.one({
+        angle: s * GOLDEN_ANGLE,
+        speed: A.spd(2.0 + 0.6 * Math.sin(s * 0.02)),
+        shape: 'pellet', r: 4.2,
+        color: s % 3 === 0 ? C.amber : C.orange,
+        life: 620,
+      });
+      if (s % 3 === 0) {
+        x = logistic(x, 3.94);
+        A.one({ angle: x * TAU, speed: A.spd(1.6 + x * 2.2), shape: 'circle', r: 4.6, color: C.red, life: 620 });
+      }
+      s++;
     }
 
     // Cellular-automaton ring.
@@ -240,8 +271,20 @@ function* finalTheorem(A) {
     // Periodic beam pair.
     if (A.L(1) && i % laserEvery === laserEvery - 1) {
       const a0 = A.aim();
-      A.laser({ angle: a0, spin: 0.008, warn: 50, fire: A.w(110), width: 13, color: C.red, follow: true });
-      A.laser({ angle: a0 + PI, spin: 0.008, warn: 50, fire: A.w(110), width: 13, color: C.red, follow: true });
+      // A rotating beam outruns the player past a radius of speed/spin, and a
+      // flat 0.008 put that limit at 569px on every tier -- inside the
+      // playfield, so from the bottom of the screen Novice was exactly as
+      // unoutrunnable as Lunatic, with nothing telegraphing it. Sweep Lasers
+      // already scales its spin by difficulty; this one did not.
+      //
+      // Both this and the telegraph are clamped to ease only, like A.gap():
+      // Novice's outrun limit moves out to 790px -- past anywhere the player
+      // can stand, so running works again -- and Normal upward keep the beam
+      // they were tuned with.
+      const spin = 0.008 * Math.min(1, A.D.speed);
+      const warn = Math.max(50, A.w(50));
+      A.laser({ angle: a0, spin, warn, fire: A.w(110), width: 13, color: C.red, follow: true });
+      A.laser({ angle: a0 + PI, spin, warn, fire: A.w(110), width: 13, color: C.red, follow: true });
     }
 
     i++;

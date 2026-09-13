@@ -271,10 +271,26 @@ function* cardinalBloom(A) {
 }
 ```
 
-Difficulty threads through four helpers — `A.n()` scales counts, `A.spd()`
-scales velocity, `A.w()` scales delays, and `A.L(k)` gates a whole optional
-sub-pattern. That last one is what makes the difficulties structurally
-different.
+Difficulty threads through five helpers — `A.n()` scales counts, `A.spd()`
+scales velocity, `A.w()` scales delays, `A.gap()` scales delays *between
+waves*, and `A.L(k)` gates a whole optional sub-pattern. That last one is what
+makes the difficulties structurally different.
+
+`A.gap()` exists because of a mistake worth not repeating. Some patterns are
+hard because of how many waves are in flight at once rather than how dense one
+wave is, and for those, `A.w()` alone does nothing: a wave stays on screen for
+about `span / speed` frames, so scaling the gap by `rate` very nearly cancels
+the speed change and every difficulty ends up with the same overlap. Chaos
+Engine's Convergence ran 7.1 overlapping waves on Novice against 8.3 on
+Lunatic. `A.gap()` divides by speed as well, and clamps so it only ever eases —
+Normal is the reference tuning and the tiers above it keep the gap they were
+designed with.
+
+The same trap catches any layer whose *count* does not go through `A.n()`.
+Final Theorem emitted one bullet per frame unconditionally, so it put 784
+bullets on screen at Novice and 809 at Lunatic — a 3% difficulty range on a
+phase where every other pattern spans sixfold. Anything spawned at a fixed rate
+needs its rate scaled, or the easier tiers get slower bullets and more of them.
 
 Bullet behaviour is data, not closures, so the pool stays allocation-free while
 still supporting gravity (`ax`/`ay`), constant-curvature steering (`turn`,
@@ -304,6 +320,7 @@ tools/
   census.mjs        per-phase bullet-count and frame-cost report
   ships.mjs         per-ship clear time, dodging vs lined up
   audiokeys.mjs     sound levels, key bindings, the music drop-in path
+  autopsy.mjs       what kills you on one phase, and how pressure builds
   music.mjs         rebuild music/tracks.json from the files on disk
   vercel-build.mjs  assemble public/ for a static deploy
   shots.mjs         screenshot every phase
@@ -318,6 +335,7 @@ npm test            # drives every boss at every difficulty in Chromium
 npm run survive     # can a player actually dodge each pattern?
 npm run margins     # how much dodging room each pattern really has
 npm run deadzones   # can you park anywhere and ignore a pattern?
+npm run autopsy -- --boss 5 --phase 4   # why is this phase hard?
 npm run bot         # autopilot quality: survival, gap width, idle drift
 npm run ships       # is every ship worth picking?
 npm run audio       # sound levels, key bindings, music end to end

@@ -46,6 +46,22 @@ export class Attack {
   spd(v) { return v * this.D.speed; }
   /** Scale a wait, in frames. */
   w(f) { return Math.max(1, Math.round(f * this.D.rate)); }
+
+  /**
+   * A wait between waves, for patterns whose difficulty comes from how many
+   * waves are in flight at once rather than from how dense one wave is.
+   *
+   * A wave stays on screen for roughly (span / speed) frames, so scaling the
+   * gap by `rate` alone very nearly cancels the speed change: every difficulty
+   * ends up with the same number of overlapping waves, and the easier tiers
+   * get no relief on the one thing the player actually dies to. Dividing by
+   * speed as well makes the overlap itself scale.
+   *
+   * Clamped to never return less than w(f), so this only ever eases. Normal is
+   * the reference tuning and the tiers above it keep the gap they were
+   * designed with; only Novice and Easy, where bullets linger, are stretched.
+   */
+  gap(f) { return Math.max(this.w(f), Math.round(this.w(f) / this.D.speed)); }
   /** Is optional layer `k` (1..4) enabled at this difficulty? */
   L(k) { return this.D.layers >= k; }
   /** Aim error, widest on Novice and zero on Lunatic. */
