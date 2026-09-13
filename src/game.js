@@ -7,7 +7,7 @@ import {
 import { Input } from './input.js';
 import { Sfx, SOUND_LEVELS } from './audio.js';
 import { Music } from './music.js';
-import { DeathLog } from './deaths.js';
+import { RunLog } from './runlog.js';
 import { BulletPool } from './bullets.js';
 import { Particles } from './particles.js';
 import { Player } from './player.js';
@@ -28,7 +28,7 @@ export class Game {
     this.input = new Input(window);
     this.sfx = new Sfx();
     this.music = new Music();
-    this.deaths = new DeathLog();
+    this.log = new RunLog();
     this.settings = loadSettings();
     this.sfx.level = this.settings.sound;
     this.music.setVolume(this.settings.music);
@@ -52,6 +52,8 @@ export class Game {
     this.starfield = makeStarfield();
     this.fps = 60;
     this.dpr = 1;               // set by the host on resize
+    this.logNote = '';
+    this.logNoteT = 0;
 
     this.buildMenus();
   }
@@ -148,6 +150,34 @@ export class Game {
       hint: 'Dim your own shots so enemy bullets read more clearly.',
     };
 
+    // The log is only worth keeping if it can leave the browser. Clearing sits
+    // next to it because the useful thing to send is one session, not every
+    // session since the tracker was added.
+    const logItem = {
+      label: 'DOWNLOAD LOG',
+      value: () => (this.log.size ? String(this.log.size) : '--'),
+      valueColor: () => (this.log.size ? C.teal : C.dust),
+      action: () => {
+        if (!this.log.size) return;
+        this.logNote = this.log.download() ? 'SAVED' : 'BLOCKED';
+        this.logNoteT = 150;
+      },
+      hint: () => (this.log.size
+        ? 'Every death, graze and pattern attempt so far, as a JSON file.'
+        : 'Nothing recorded yet. Play a pattern and it fills up.'),
+    };
+    const clearLogItem = {
+      label: 'CLEAR LOG',
+      value: () => '',
+      action: () => {
+        this.log.clear();
+        this._phaseKey = null;
+        this.logNote = 'CLEARED';
+        this.logNoteT = 150;
+      },
+      hint: 'Wipes it immediately. Download first if you want to keep it.',
+    };
+
     this.mainMenu = new Menu([
       { label: 'START BOSS RUSH', action: () => this.startRun('rush', 0), hint: 'All five bosses back to back.' },
       { label: 'BOSS SELECT', action: () => this.setScene('select'), hint: 'Practise any single boss.' },
@@ -161,6 +191,9 @@ export class Game {
       alphaItem,
       soundItem,
       musicItem,
+      { separator: true },
+      logItem,
+      clearLogItem,
       { separator: true },
       { label: 'HOW TO PLAY', action: () => this.setScene('help'), hint: 'Controls and scoring.' },
     ]);
@@ -193,6 +226,8 @@ export class Game {
       soundItem,
       musicItem,
       { separator: true },
+      logItem,
+      { separator: true },
       { label: 'QUIT TO MENU', action: () => this.setScene('menu') },
     ], { onCancel: () => { this.scene = 'play'; } });
 
@@ -200,6 +235,23 @@ export class Game {
       { label: 'RETRY BOSS', action: () => this.startBoss(this.run.index, true) },
       { label: 'QUIT TO MENU', action: () => this.setScene('menu') },
     ]);
+  }
+
+  /**
+   * Open and close phase records by watching the boss's phase change, rather
+   * than calling out from each of the half-dozen places a pattern can end.
+   * Missing one of those would silently lose records, which is the one failure
+   * a log must not have.
+   */
+  syncPhaseRecord() {
+    const b = this.boss;
+    const key = b && b.state === 'fight' && b.phase
+      ? `${b.def.id}:${b.phaseIndex}:${this.log.run ? this.log.run.id : ''}` : null;
+    if (key === this._phaseKey) return;
+    if (this._phaseKey) this.log.closePhase(this._lastOutcome || 'superseded', this);
+    this._lastOutcome = null;
+    this._phaseKey = key;
+    if (key) this.log.beginPhase(this);
   }
 
   /** Step the sound level, wrapping. `d` may be negative from the menu's left arrow. */
@@ -211,6 +263,10 @@ export class Game {
   }
 
   setScene(name) {
+    if ((name === 'menu' || name === 'title') && this.run) {
+      this.log.endRun(this.state === 'gameover' ? 'gameover' : 'quit');
+      this._phaseKey = null;
+    }
     this.scene = name;
     this.sceneT = 0;
     // Menus, the title and the results share one cue; fights get their boss's.
@@ -237,6 +293,8 @@ export class Game {
   // Run lifecycle
   // -------------------------------------------------------------------------
   startRun(mode, bossIndex) {
+    this.log.beginRun(this, mode, bossIndex);
+    this._phaseKey = null;
     this.run = {
       mode,
       order: mode === 'rush' ? BOSSES.map((_, i) => i) : [bossIndex],
@@ -289,6 +347,7 @@ export class Game {
   addShake(v) { this.shake = Math.min(26, this.shake + v); }
 
   onPhaseCleared(phaseIndex, elapsed, par, noMiss) {
+    this._lastOutcome = 'cleared';
     // Scored against par rather than against a countdown: break it faster than
     // the pattern's par time and the surplus is the bonus.
     const underPar = Math.max(0, (par - elapsed) / 60);
@@ -353,7 +412,7 @@ export class Game {
     const run = this.run;
     const p = this.player;
     // Before clearArea below wipes the evidence.
-    this.deaths.record(this, killer, cause);
+    this.log.record(this, killer, cause);
     this.sfx.play('death');
     this.addShake(18);
     this.flash = 0.55;
@@ -376,6 +435,7 @@ export class Game {
     if (run.bombs <= 0) return;
     run.bombs--;
     run.bombsUsed++;
+    this.log.count('bombs');
     this.addScore(SCORE.bomb);
     this.bomb = { x: this.player.x, y: this.player.y, r: 20, t: 0 };
     this.player.invuln = Math.max(this.player.invuln, 150);
@@ -427,6 +487,7 @@ export class Game {
 
   updatePlay() {
     this.stateT++;
+    this.syncPhaseRecord();
 
     if (this.input.pressed('pause') && this.state !== 'gameover') {
       this.scene = 'pause';
@@ -514,6 +575,7 @@ export class Game {
         if (dx * dx + dy * dy < rr * rr) {
           if (this.boss.vulnerable) {
             const dealt = this.boss.damage(s.dmg);
+            this.log.count('damage', dealt);
             this.addScore(dealt * SCORE.damage);
             this.particles.spark(s.x, s.y, C.ice, 2, 2.2, 12);
           } else {
@@ -548,6 +610,7 @@ export class Game {
           b.grazed = true;
           run.graze++;
           this.addScore(SCORE.graze);
+          this.log.count('grazes');
           if (run.graze % 25 === 0) this.particles.pop(p.x, p.y - 22, 'GRAZE ' + run.graze, C.amber, 40);
           this.particles.dot(b.x, b.y, C.white, 3, 8);
           this.sfx.play('graze', 90);
@@ -912,6 +975,13 @@ export class Game {
     text(g, 'BOSS RUSH', 120, 150, { size: 46, weight: 700, color: C.white, track: 8, glow: C.blue, glowSize: 22 });
     text(g, 'SELECT YOUR TERMS', 124, 178, { size: 11, color: C.dust, track: 5 });
     this.mainMenu.draw(g, 124, 270, { width: 430, size: 17, lineHeight: 40 });
+    if (this.logNoteT > 0) {
+      this.logNoteT--;
+      g.globalAlpha = Math.min(1, this.logNoteT / 40);
+      text(g, `LOG ${this.logNote}`, 124, 700,
+        { size: 12, color: this.logNote === 'BLOCKED' ? C.red : C.teal, track: 3 });
+      g.globalAlpha = 1;
+    }
 
     // Difficulty ladder readout.
     const px = 640, py = 240;
@@ -1116,7 +1186,7 @@ export class Game {
     // Where the misses actually came from. The per-boss column above says how
     // many; this says which pattern and what kind of bullet, which is the part
     // worth knowing.
-    const worst = this.deaths.summary().slice(0, 3);
+    const worst = this.log.summary().slice(0, 3);
     if (worst.length) {
       y += 62;
       text(g, 'WHERE YOU DIED', x + 20, y, { size: 10, color: '#63719a', track: 2 });

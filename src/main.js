@@ -75,5 +75,9 @@ function frame(now) {
 
 requestAnimationFrame(frame);
 
+// Walking away mid-pattern is a data point, not an absence of one: pagehide
+// fires on tab close and on mobile backgrounding where unload does not.
+window.addEventListener('pagehide', () => game.log.endRun('closed'));
+
 // Handy for debugging and for the automated smoke test.
 window.__BOSSRUSH = { game, VIEW };

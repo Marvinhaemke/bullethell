@@ -12,7 +12,6 @@ export default [
         requestAnimationFrame: 'readonly',
         console: 'readonly',
         process: 'readonly',
-        URL: 'readonly',
         AudioContext: 'readonly',
         Audio: 'readonly',
         fetch: 'readonly',
@@ -21,6 +20,8 @@ export default [
         setTimeout: 'readonly',
         // Node-side, for the tools; they also run browser code via evaluate().
         Buffer: 'readonly',
+        Blob: 'readonly',
+        URL: 'readonly',
       },
     },
     rules: {

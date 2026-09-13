@@ -36,7 +36,7 @@ MODULES = [
     "src/input.js",
     "src/storage.js",
     "src/music.js",
-    "src/deaths.js",
+    "src/runlog.js",
     "src/particles.js",
     "src/bullets.js",
     "src/lasers.js",

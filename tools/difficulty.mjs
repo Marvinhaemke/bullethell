@@ -66,6 +66,16 @@
 //
 // Lower safety = harder. The number is in pixels and is meant to be compared
 // between phases and down a difficulty column, not read as an absolute.
+//
+// WHAT IT DOES NOT SEE
+//
+// Beams. Every axis here is computed from the bullet pool, so a phase can be
+// made meaningfully easier or harder by changing its sweeps and this will
+// report no change at all. Sweep Lasers and Final Theorem are the two phases
+// that matters for, and on both the run log is the better witness -- every
+// recorded bot death across the whole game is a beam. Splits are the other
+// gap: a volley that becomes three is scored as the new bullets it produces,
+// not as the prediction failure it also is.
 
 import { chromium } from 'playwright';
 import { existsSync } from 'node:fs';

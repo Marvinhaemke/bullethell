@@ -197,7 +197,11 @@ function* finalTheorem(A) {
   // bullets per event never scaled with difficulty either, and the population
   // on screen came out almost flat from Novice to Lunatic.
   const caEvery = A.gap(22);
-  const laserEvery = A.w(300);
+  // A.gap so the easier tiers face fewer sweeps, not just slower ones. The
+  // beam is the single hardest thing in this phase to read while a 400-bullet
+  // curtain is also on screen, and A.w alone left Novice and Easy meeting it
+  // nearly as often as Lunatic.
+  const laserEvery = A.gap(300);
 
   // The stream used to emit one bullet per frame at every difficulty, which
   // made this phase as dense on Novice as on Lunatic -- measured at 777 vs 777
@@ -210,7 +214,7 @@ function* finalTheorem(A) {
   // proportional to density x speed leaves a population proportional to
   // density alone -- the same way every other layer here already behaves,
   // because their counts go through A.n().
-  const streamRate = A.D.density * A.D.speed * 0.42;
+  const streamRate = A.D.density * A.D.speed * 0.37;
   let streamAcc = 0;
   let s = 0;                  // stream index: advances per bullet, not per frame
 

@@ -84,6 +84,10 @@ export class Bullet {
     this.oscA = 0; this.oscF = 0; this.oscP = 0;
 
     this.bounce = 0;
+    // Bounces already spent. `bounce` counts down, so without this a bullet
+    // that has used them up is indistinguishable from one that never bounced
+    // -- which made the death log file Reflection's ricochets as "straight".
+    this.bounced = 0;
 
     // Recursive splitting.
     this.splitT = 0; this.splitGen = 0; this.split = null;
@@ -235,10 +239,10 @@ export class BulletPool {
 
         // --- wall bounces ---------------------------------------------------
         if (b.bounce > 0) {
-          if (b.x < PLAY.x + b.r && b.vx < 0) { b.vx = -b.vx; b.x = PLAY.x + b.r; b.bounce--; }
-          else if (b.x > PLAY.right - b.r && b.vx > 0) { b.vx = -b.vx; b.x = PLAY.right - b.r; b.bounce--; }
-          if (b.y < PLAY.y + b.r && b.vy < 0) { b.vy = -b.vy; b.y = PLAY.y + b.r; b.bounce--; }
-          else if (b.y > PLAY.bottom - b.r && b.vy > 0) { b.vy = -b.vy; b.y = PLAY.bottom - b.r; b.bounce--; }
+          if (b.x < PLAY.x + b.r && b.vx < 0) { b.vx = -b.vx; b.x = PLAY.x + b.r; b.bounce--; b.bounced++; }
+          else if (b.x > PLAY.right - b.r && b.vx > 0) { b.vx = -b.vx; b.x = PLAY.right - b.r; b.bounce--; b.bounced++; }
+          if (b.y < PLAY.y + b.r && b.vy < 0) { b.vy = -b.vy; b.y = PLAY.y + b.r; b.bounce--; b.bounced++; }
+          else if (b.y > PLAY.bottom - b.r && b.vy > 0) { b.vy = -b.vy; b.y = PLAY.bottom - b.r; b.bounce--; b.bounced++; }
         }
       }
 

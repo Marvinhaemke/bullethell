@@ -1,15 +1,11 @@
-// Read a death log back and summarise it.
+// Read a run log back and summarise it.
 //
-//   node tools/deaths.mjs deaths.json        # a log exported from the browser
-//   node tools/deaths.mjs --bot --boss 5     # generate one with the dodging bot
+//   node tools/deaths.mjs bossrush-log.json   # a log exported from the game
+//   node tools/deaths.mjs --bot --boss 5      # generate one with the dodging bot
 //
-// The game records every death (src/deaths.js) into localStorage. To get your
-// own log out, open the console on the game page and run:
-//
-//   copy(__BOSSRUSH.game.deaths.export())        // Chrome/Firefox: to clipboard
-//   __BOSSRUSH.game.deaths.export()              // or just read it
-//
-// then save it to a file and pass it here.
+// The game records deaths, pattern attempts and runs (src/runlog.js) as they
+// happen. Get the file with DOWNLOAD LOG in the main or pause menu -- no
+// console needed -- or from __BOSSRUSH.game.log.export().
 //
 // WHAT IT IS FOR
 //
@@ -32,6 +28,8 @@ const USE_BOT = args.includes('--bot');
 const file = args.find((a) => !a.startsWith('--') && !/^\d+$/.test(a));
 
 let entries;
+let phases = [];
+let runs = [];
 
 if (USE_BOT) {
   const { chromium } = await import('playwright');
@@ -65,7 +63,7 @@ if (USE_BOT) {
 
   entries = await page.evaluate(([bosses, trials, frames]) => {
     const { game: g } = window.__BOSSRUSH;
-    g.deaths.clear();
+    g.log.clear();
     g.settings.autopilot = true;
     g.settings.autofire = true;
     for (const bi of bosses) {
@@ -91,7 +89,7 @@ if (USE_BOT) {
         }
       }
     }
-    return g.deaths.entries;
+    return g.log.deaths;
   }, [BOSS === null ? [0, 1, 2, 3, 4] : [BOSS], TRIALS, FRAMES]);
 
   await browser.close();
@@ -102,7 +100,13 @@ if (USE_BOT) {
       'Export from the game console with: __BOSSRUSH.game.deaths.export()');
     process.exit(1);
   }
-  entries = JSON.parse(readFileSync(file, 'utf8'));
+  const raw = JSON.parse(readFileSync(file, 'utf8'));
+  // A log exported before phases and runs existed is a bare array.
+  entries = Array.isArray(raw) ? raw : raw.deaths || [];
+  if (!Array.isArray(raw) && Array.isArray(raw.phases) && raw.phases.length) {
+    phases = raw.phases;
+    runs = Array.isArray(raw.runs) ? raw.runs : [];
+  }
 }
 
 if (!Array.isArray(entries) || !entries.length) {
@@ -162,6 +166,51 @@ for (const e of entries) {
   else if (!tr.length) allTraits.straight = (allTraits.straight || 0) + 1;
   for (const t of tr) allTraits[t] = (allTraits[t] || 0) + 1;
 }
+// Attempts per pattern. Deaths alone cannot say how hard something was: a
+// pattern cleared first try having grazed forty bullets and one cleared on the
+// third attempt both report zero deaths.
+if (phases.length) {
+  const pby = new Map();
+  for (const ph of phases) {
+    if (ph.autopilot) continue;
+    const key = `${ph.bossName}|${ph.phase + 1}. ${ph.phaseName}|${ph.diff}`;
+    let r = pby.get(key);
+    if (!r) {
+      r = { boss: ph.bossName, phase: `${ph.phase + 1}. ${ph.phaseName}`, diff: ph.diff,
+        tries: 0, cleared: 0, deaths: 0, grazes: 0, bombs: 0, secs: [] };
+      pby.set(key, r);
+    }
+    r.tries++;
+    if (ph.outcome === 'cleared') r.cleared++;
+    r.deaths += ph.deaths || 0;
+    r.grazes += ph.grazes || 0;
+    r.bombs += ph.bombs || 0;
+    if (ph.seconds) r.secs.push(ph.seconds);
+  }
+  const prows = [...pby.values()].sort((a, b) => (b.deaths / b.tries) - (a.deaths / a.tries));
+  if (prows.length) {
+    console.log('\nPattern attempts, worst deaths-per-attempt first:');
+    console.log('BOSS          PHASE                      DIFF    TRIES  CLEARED  DEATHS/TRY  GRAZE/TRY   AVG TIME');
+    console.log('-'.repeat(104));
+    for (const r of prows) {
+      console.log(
+        r.boss.padEnd(14) + r.phase.padEnd(27) + r.diff.padEnd(7) +
+        String(r.tries).padStart(6) + String(r.cleared).padStart(9) +
+        (r.deaths / r.tries).toFixed(2).padStart(12) +
+        (r.grazes / r.tries).toFixed(0).padStart(11) +
+        `${mean(r.secs) === null ? '--' : mean(r.secs).toFixed(0) + 's'}`.padStart(11));
+    }
+  }
+}
+
+if (runs.length) {
+  const human = runs.filter((r) => !r.autopilot);
+  console.log(`\n${human.length} run(s): ` +
+    Object.entries(human.reduce((a, r) => {
+      a[r.outcome] = (a[r.outcome] || 0) + 1; return a;
+    }, {})).map(([k, v]) => `${v} ${k}`).join(', '));
+}
+
 console.log('\nKilling bullet behaviour, all deaths:');
 for (const [k, v] of Object.entries(allTraits).sort((a, b) => b[1] - a[1])) {
   const pct = (100 * v / entries.length).toFixed(0);

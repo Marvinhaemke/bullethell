@@ -223,7 +223,7 @@ prints a 10th-percentile column so you can see which. And `drift` only covers
 bullets already on screen — a volley that splits into three is scored as the new
 bullets it becomes, not as the prediction failure it also is.
 
-## The death log
+## The run log
 
 Every number in `npm run difficulty` is a **model** of a player: straight-line
 prediction, a movement budget, a reaction window. Every number in `npm run
@@ -231,38 +231,51 @@ margins` comes from a bot that plans straight lines, cannot orbit a sweep, and
 has no idea a pattern is about to do something. Both are useful and neither is
 a person.
 
-So the game records what actually kills you. `src/deaths.js` logs each death at
-the collision site — where the killing bullet is still in hand, rather than
-guessed afterwards from what happened to be nearby, which goes wrong exactly
-when the screen is busiest:
+So the game records what actually happens, in three streams. Deaths alone are
+not enough — a pattern cleared first try having grazed forty bullets and one
+cleared on the third attempt both report zero deaths:
 
-| | |
+| stream | |
 | --- | --- |
-| where | boss, pattern, difficulty, life mode, ship, seconds into the phase, position |
-| what | the bullet's colour, shape, radius, speed, and whether it was closing on you |
-| how | its behaviour — curving, bouncing, homing, accelerating, stop-go, splitting, orbiting — read off the bullet's own fields, so the list cannot go stale when a pattern changes |
-| context | bullets on screen, how many were near you, and your clearance at the instant of death |
+| `deaths` | one per death, taken at the collision site where the killing bullet is still in hand — reconstructing it afterwards from what was nearby fails exactly when the screen is busiest |
+| `phases` | one per pattern attempt, however it ended: cleared, died out, quit to the menu, or closed the tab mid-fight |
+| `runs` | one per run, so boss-select practice and a full rush stay distinguishable |
 
-That last row is the point: `clearance` is the same quantity `npm run
-difficulty` calls `room`, so a phase whose deaths cluster at a clearance far
-above its measured room is one the model is getting wrong.
+A death record carries the boss, pattern, difficulty, ship, seconds into the
+phase and position; the bullet's colour, shape, radius, speed and whether it was
+closing on you; its behaviours — curving, bouncing, homing, accelerating,
+stop-go, splitting, orbiting — read off the bullet's **own fields**, so the list
+cannot go stale when a pattern changes; and the bullets on screen and your
+clearance at that instant.
 
-The log persists to `localStorage`, capped at 400, and goes nowhere else. The
-results screen shows the top three patterns you died on. To get the raw data
-out, open the console on the game page:
+That last one is deliberate: `clearance` is the same quantity the difficulty
+sweep calls `room`, so a phase whose deaths cluster far above its measured room
+is one the model is getting wrong.
 
-```js
-copy(__BOSSRUSH.game.deaths.export())   // to the clipboard
-__BOSSRUSH.game.deaths.export()         // or just read it
+Reading behaviour off the bullet has one trap worth knowing, because it bit:
+`bounce` counts *down* as bounces are spent, so asking whether it is positive
+files a ricochet that has finished bouncing as a plain straight shot. It took a
+real log, in which Reflection's deaths were all reported as "straight bullets",
+to notice. `bounced` now counts the other way.
+
+Everything persists to `localStorage` **as it happens**, not at the end, so a
+run abandoned halfway is recorded rather than lost — including boss-select
+practice and closing the tab mid-pattern. Capped, and sent nowhere.
+
+**DOWNLOAD LOG** in the main or pause menu writes it out as JSON; the item shows
+how many records are waiting. **CLEAR LOG** sits next to it, because the useful
+thing to hand over is usually one session rather than every session since the
+tracker was added. Then:
+
+```bash
+node tools/deaths.mjs bossrush-log-2026-01-01-12-00-00.json
 ```
 
-Save that to a file and `node tools/deaths.mjs deaths.json` summarises it.
-`npm run deaths -- --bot` fills a log from the dodging bot instead, which is
-useful for regression but not for tuning — the bot dies to things people do not,
-and survives things people do not. It says so plainly: run it today and every
-single death across all twenty patterns is a beam, most of them with 120–200px
-of bullet clearance, which is the straight-line planner walking into a sweep it
-cannot express a curve around.
+which prints deaths per pattern, attempts and clear rate per pattern, and which
+bullet behaviours are actually killing. `npm run deaths -- --bot` fills a log
+from the dodging bot instead — useful for regression, not for tuning, since the
+bot dies to things people do not. It says so plainly: run it today and every
+single death across all twenty patterns is a beam.
 
 <a id="music"></a>
 ## Music
@@ -406,7 +419,7 @@ src/
   autopilot.js      the dodging bot: in-game autopilot and test harness
   ships.js          the ship roster, as weapon-component data
   music.js          streams whatever mp3s are in music/
-  deaths.js         the death log: what killed you, where, and how crowded
+  runlog.js         the run log: deaths, pattern attempts, runs
   player.js  lasers.js  particles.js  sprites.js
   ui.js  input.js  audio.js  storage.js  config.js  mathx.js  rng.js
   bosses/boss1..5.js
@@ -418,7 +431,7 @@ tools/
   audiokeys.mjs     sound levels, key bindings, the music drop-in path
   autopsy.mjs       what kills you on one phase, and how pressure builds
   difficulty.mjs    difficulty on space AND predictability, not space alone
-  deaths.mjs        read a death log back, or fill one with the bot
+  deaths.mjs        read a run log back, or fill one with the bot
   music.mjs         the music manifest scanner, and a CLI to write it out
   vercel-build.mjs  assemble public/ for a static deploy
   shots.mjs         screenshot every phase

@@ -250,7 +250,7 @@ const ui = await page.evaluate(() => {
 
   // deaths drain lives and eventually end the run, and each one is logged
   out.livesStart = game.run.lives;
-  game.deaths.clear();
+  game.log.clear();
   const fake = { color: '#ff0000', shape: 'circle', hr: 5, vx: 0, vy: 3,
     age: 20, turn: 0.02, ax: 0, ay: 0, accel: 0, bounce: 0, homeT: 0,
     stopT: 0, goT: 0, orbit: null, frozen: false, split: null };
@@ -264,12 +264,14 @@ const ui = await page.evaluate(() => {
   out.gameOverState = game.state;
   // The log is the raw material for future tuning, so it has to survive a
   // reload and name the pattern and the behaviour that did the killing.
-  out.deathsLogged = game.deaths.entries.length;
-  const last = game.deaths.entries[game.deaths.entries.length - 1] || {};
+  out.deathsLogged = game.log.deaths.length;
+  const last = game.log.deaths[game.log.deaths.length - 1] || {};
   out.deathPhase = last.phaseName || null;
   out.deathTraits = last.killer ? last.killer.traits.join('+') : null;
-  out.deathPersisted = JSON.parse(localStorage.getItem('bosrush.deaths.v1') || '[]').length;
-  out.deathSummary = game.deaths.summary({ includeAutopilot: true }).length;
+  out.deathPersisted = (JSON.parse(localStorage.getItem('bosrush.runlog.v1') || '{}').deaths || []).length;
+  out.deathSummary = game.log.summary({ includeAutopilot: true }).length;
+  // Phase attempts and grazes are the streams that make a death interpretable.
+  out.phasesLogged = game.log.phases.length + (game.log.open ? 1 : 0);
   game.draw();
 
   // clearing a boss advances / produces results
@@ -301,6 +303,7 @@ if (ui.deathPersisted !== 4) failures.push(`death log did not persist (got ${ui.
 if (!ui.deathPhase) failures.push('death log did not record which pattern');
 if (ui.deathTraits !== 'curving') failures.push(`death log misread the bullet (got ${ui.deathTraits})`);
 if (ui.deathSummary < 1) failures.push('death log summary came back empty');
+if (ui.phasesLogged < 1) failures.push('run log recorded no phase attempt');
 if (ui.afterClear !== 'results') failures.push(`boss clear did not reach results (got ${ui.afterClear})`);
 
 await browser.close();
