@@ -1,6 +1,6 @@
 // Player ship: movement, focus mode, forward shots, bombs, death handling.
 
-import { TAU, clamp } from './mathx.js';
+import { TAU, PI, clamp } from './mathx.js';
 import { PLAY, C } from './config.js';
 import { drawShape } from './sprites.js';
 
@@ -12,12 +12,23 @@ export const PLAYER_SPEED = { free: SPEED_FREE, focus: SPEED_FOCUS };
 const FIRE_INTERVAL = 3;
 const HIT_RADIUS = 2.7;
 
+// How hard an unfocused shot steers, in radians per frame. It has to be sharp:
+// a homing shot turns through a circle of radius speed/turn, and if that is
+// wider than the boss's hitbox an overshooting shot orbits forever without
+// ever touching it. At 16.5px/frame this keeps the turn circle near 30px,
+// inside the ~32px boss radius, so shots that miss come back round and land.
+const HOMING_TURN = 0.55;
+// A homing shot that misses would otherwise circle forever.
+const SHOT_LIFE = 220;
+
 class Shot {
   constructor() { this.init(); }
   init() {
     this.x = 0; this.y = 0; this.vx = 0; this.vy = 0;
     this.dmg = 10; this.r = 3.5; this.len = 12;
     this.color = C.ice;
+    this.homing = 0;
+    this.age = 0;
     this.alive = true;
   }
 }
@@ -93,11 +104,17 @@ export class Player {
     this.updateShots();
   }
 
+  /**
+   * The two stances trade damage against attention. Unfocused shots steer
+   * themselves to the boss, so you can give the screen your whole attention
+   * and still make steady progress. Focused shots fly straight and hit far
+   * harder, but you have to stand where the boss is and stay there.
+   */
   fire() {
     const g = this.game;
     g.sfx.play('shoot', 60);
     if (this.focus) {
-      // Focused: two tight high-damage lances.
+      // Focused: two tight high-damage lances, no steering.
       for (let i = -1; i <= 1; i += 2) {
         const s = this.spawnShot();
         s.x = this.x + i * 7; s.y = this.y - 12;
@@ -106,24 +123,49 @@ export class Player {
         s.color = C.cyan;
       }
     } else {
-      // Unfocused: a wider three-lane spray.
+      // Unfocused: a three-lane spray that homes.
       const angles = [-0.16, 0, 0.16];
       for (let i = 0; i < 3; i++) {
         const a = -Math.PI / 2 + angles[i];
         const s = this.spawnShot();
         s.x = this.x + angles[i] * 40; s.y = this.y - 10;
         s.vx = Math.cos(a) * 16.5; s.vy = Math.sin(a) * 16.5;
-        s.dmg = 10; s.r = 4; s.len = 12;
-        s.color = i === 1 ? C.ice : C.blue;
+        s.dmg = 3.5; s.r = 4; s.len = 12;
+        s.homing = HOMING_TURN;
+        s.color = i === 1 ? C.teal : C.green;
       }
     }
   }
 
   updateShots() {
+    const boss = this.game.boss;
+    // Only steer at a boss that can actually be hit; between phases the shots
+    // just fly on rather than circling an invulnerable target.
+    const target = boss && boss.state === 'fight' ? boss : null;
+
     for (let i = 0; i < this.shotN; i++) {
       const s = this.shots[i];
+      s.age++;
+
+      if (s.homing > 0 && target) {
+        const want = Math.atan2(target.y - s.y, target.x - s.x);
+        let cur = Math.atan2(s.vy, s.vx);
+        let d = (want - cur) % TAU;
+        if (d > PI) d -= TAU; else if (d < -PI) d += TAU;
+        cur += clamp(d, -s.homing, s.homing);
+        const sp = Math.hypot(s.vx, s.vy);
+        s.vx = Math.cos(cur) * sp;
+        s.vy = Math.sin(cur) * sp;
+      }
+
       s.x += s.vx; s.y += s.vy;
-      if (s.y < PLAY.y - 20 || s.x < PLAY.x - 30 || s.x > PLAY.right + 30 || !s.alive) {
+
+      // A homing shot that overshoots curls back round, so it needs a
+      // lifetime -- leaving the top of the screen is no longer the only exit.
+      const gone = !s.alive || s.age > SHOT_LIFE
+        || s.y < PLAY.y - 30 || s.y > PLAY.bottom + 40
+        || s.x < PLAY.x - 40 || s.x > PLAY.right + 40;
+      if (gone) {
         this.shots[i] = this.shots[this.shotN - 1];
         this.shots[this.shotN - 1] = s;
         this.shotN--; i--;

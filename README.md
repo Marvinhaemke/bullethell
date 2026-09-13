@@ -28,7 +28,7 @@ python3 build.py          # writes dist/index.html, a single self-contained file
 | --- | --- |
 | Arrows / WASD | Move |
 | **Shift** (hold) | Focus — half speed, tighter and stronger shot, hitbox shown |
-| **Z** / Space | Fire (hold) |
+| **Z** / Space | Fire (hold) — unfocused shots home, focused shots fly straight |
 | **X** / C | Bomb — clears bullets, damages the boss, grants invulnerability |
 | **Esc** / P | Pause |
 | Shift + **R** | Restart the current boss |
@@ -69,8 +69,18 @@ Both are selectable from the main menu and from the pause menu mid-fight.
 ## The bosses
 
 Each boss has three to five patterns. Depleting a pattern's health bar clears
-the screen and advances to the next; letting the timer expire also advances it,
-but forfeits the time bonus.
+the screen and advances to the next. **There is no time limit** — a pattern
+ends when its health does. Each one still has a par time, and clearing under
+par is what pays the speed bonus.
+
+That works because the two firing stances trade damage against attention.
+Unfocused shots **home**, so you can give the screen your whole attention and
+still make steady progress: playing a boss entirely unfocused clears each
+pattern in about its par time. Focused shots fly straight and hit roughly six
+times harder, but only if you stand where the boss is and stay there.
+
+The one exception is Chaos Engine's final pattern, which is a **survival**
+phase: there the clock is the win condition, and running it out is the clear.
 
 ### 1 · SENTINEL — *Rotational Primer*
 Clean rotational geometry. Precessing rings, two counter-wound spiral arms whose
@@ -186,6 +196,8 @@ npm install         # playwright, for the headless tests only
 npm test            # drives every boss at every difficulty in Chromium
 npm run survive     # can a player actually dodge each pattern?
 npm run margins     # how much dodging room each pattern really has
+npm run deadzones   # can you park anywhere and ignore a pattern?
+npm run bot         # autopilot quality: survival, gap width, idle drift
 npm run census      # per-phase bullet counts and render cost
 npm run lint
 ```

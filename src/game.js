@@ -242,8 +242,11 @@ export class Game {
 
   addShake(v) { this.shake = Math.min(26, this.shake + v); }
 
-  onPhaseCleared(phaseIndex, timedOut, timerLeft, noMiss) {
-    const bonusTime = timedOut ? 0 : Math.round((timerLeft / 60) * SCORE.timeBonus);
+  onPhaseCleared(phaseIndex, elapsed, par, noMiss) {
+    // Scored against par rather than against a countdown: break it faster than
+    // the pattern's par time and the surplus is the bonus.
+    const underPar = Math.max(0, (par - elapsed) / 60);
+    const bonusTime = Math.round(underPar * SCORE.timeBonus);
     let gain = SCORE.phaseClear + bonusTime;
     if (noMiss) gain += SCORE.phaseNoMiss;
     this.addScore(gain);
@@ -685,10 +688,20 @@ export class Game {
     g.textBaseline = 'alphabetic';
     text(g, boss.def.name, x, y - 5, { size: 13, weight: 700, color: C.white, track: 2 });
     const ph = boss.phase;
-    if (ph) {
+    if (ph && ph.survival) {
+      // Survival is the one place a clock still decides anything, and here
+      // running it down is the win, so it goes green as it closes.
       const secs = Math.ceil(boss.timer / 60);
-      text(g, secs.toString().padStart(2, '0'), PLAY.right - 14, y - 5,
-        { size: 15, weight: 700, align: 'right', color: secs <= 10 ? C.red : '#8ea0c8' });
+      text(g, 'SURVIVE ' + secs.toString().padStart(2, '0'), PLAY.right - 14, y - 5,
+        { size: 15, weight: 700, align: 'right', color: secs <= 10 ? C.green : C.ice, track: 1 });
+    } else if (ph) {
+      // Damage phases have no deadline. The clock counts up, and dims past par
+      // so you can see the speed bonus slipping away without being rushed.
+      const secs = Math.floor(boss.elapsed / 60);
+      const overPar = boss.elapsed > boss.par;
+      text(g, `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`,
+        PLAY.right - 14, y - 5,
+        { size: 15, weight: 700, align: 'right', color: overPar ? '#5b6688' : '#8ea0c8' });
     }
   }
 
@@ -931,6 +944,7 @@ export class Game {
       ['ARROWS / WASD', 'Move'],
       ['SHIFT (hold)', 'Focus: half speed, tight shot, visible hitbox'],
       ['Z / SPACE', 'Fire (hold) — or turn AUTOFIRE on and forget it'],
+      ['', 'Unfocused shots home. Focused shots fly straight and hit ~6x harder.'],
       ['X / C', 'Bomb: clears bullets, damages boss, grants invulnerability'],
       ['ESC / P', 'Pause'],
       ['SHIFT + R', 'Restart the current boss'],
@@ -966,8 +980,8 @@ export class Game {
       'source of points beyond raw damage.',
       '',
       'Each boss has multiple patterns. Depleting a pattern\'s health bar',
-      'clears the screen and advances to the next. Let the timer run out',
-      'and the pattern still ends, but you forfeit the time bonus.',
+      'clears the screen and advances to the next. There is no time limit:',
+      'clearing under the pattern\'s par time is what pays the speed bonus.',
       '',
       'Lives are granted per boss, so every fight starts on equal footing.',
     ];

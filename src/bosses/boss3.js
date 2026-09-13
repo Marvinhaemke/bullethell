@@ -123,12 +123,13 @@ function* gearRelease(A) {
     const wait = holdBase - A.w(16) * gears + A.w(24);
     let tick = 0;
     for (let i = 0; i < Math.max(1, wait); i += 12) {
-      if (A.L(1)) {
-        A.one({
-          angle: A.aim(), speed: A.spd(3.6),
-          shape: 'rice', color: C.white, r: 4.2,
-        });
-      }
+      // Always aimed, at every difficulty: the gears themselves are radial, so
+      // without this there is nothing stopping a player parking out of their
+      // path and waiting the charge out.
+      A.one({
+        angle: A.aim(), speed: A.spd(3.6),
+        shape: 'rice', color: C.white, r: 4.2,
+      });
       if (A.L(2) && tick % 2 === 0) {
         A.ring({
           n: A.n(7, 4), speed: A.spd(1.5), angle: tick * 0.4,
@@ -156,10 +157,23 @@ function* curveshot(A) {
     const n = A.n(7, 4);
     const aim = A.aimLead(undefined, undefined, 2.8);
 
-    A.fan({ n, spread: 1.1, angle: aim, speed: A.spd(2.85), turn: sgn * 0.021, turnDecay: 0.991 });
-    if (A.L(1)) {
-      A.fan({ n, spread: 1.1, angle: aim, speed: A.spd(2.4), turn: -sgn * 0.021, turnDecay: 0.991, color: C.orange });
-    }
+    // `turn` is an angular rate, so the radius a bullet curves through is
+    // speed/turn -- which means a fixed rate curls tighter at the difficulties
+    // that slow bullets down. Left unscaled, Novice bullets orbited the boss
+    // at a ~98px radius and never reached the lower half of the screen at all.
+    // Scaling with speed keeps the drawn shape the same on every difficulty.
+    const curve = 0.021 * A.D.speed;
+    const decay = 0.98;
+    // Every bullet in the volley curves, the one aimed straight at you
+    // included -- so aiming the fan at the player just guarantees it arrives
+    // somewhere else. Lead by half the total bend instead, and the arc sweeps
+    // through the aim point rather than away from it.
+    const bend = curve / (1 - decay);
+
+    // Both fans always fire: bending the same volley two ways *is* the
+    // pattern, and with only one of them there is no crossfire to be caught in.
+    A.fan({ n, spread: 1.1, angle: aim - sgn * bend * 0.5, speed: A.spd(2.85), turn: sgn * curve, turnDecay: decay });
+    A.fan({ n, spread: 1.1, angle: aim + sgn * bend * 0.5, speed: A.spd(2.4), turn: -sgn * curve, turnDecay: decay, color: C.orange });
     if (A.L(2) && k % 2 === 0) {
       A.ring({ n: A.n(12, 8), speed: A.spd(1.9), angle: k * 0.5, shape: 'pellet', color: C.red, r: 4.2 });
     }

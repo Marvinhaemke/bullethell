@@ -12,7 +12,9 @@
     "survive": "node tools/survivable.mjs",
     "margins": "node tools/survivable.mjs --sweep",
     "census": "node tools/census.mjs",
-    "shots": "node tools/shots.mjs"
+    "shots": "node tools/shots.mjs",
+    "deadzones": "node tools/safespots.mjs",
+    "bot": "node tools/botbench.mjs"
   },
   "devDependencies": {
     "playwright": "^1.56.1"
