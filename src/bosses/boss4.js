@@ -78,7 +78,12 @@ function* phyllotaxis(A) {
   // difficulties thin the spiral by firing it half as often instead.
   // ARMS is a fixed count -- eight spirals is the layer -- so the ring's
   // population never scaled with density either, and the beat has to carry it.
-  const armBeat = A.L(2) ? A.gap(8) : A.gap(13);
+  // Stepped through Normal rather than jumping to full strength there. The beat
+  // and the counter-spiral below both used to reach full strength at L(2), so
+  // Normal took two layers in one step and read as the dip in this phase's own
+  // row -- 0.72 of its column with 0.86 and 0.95 either side of it. Half of it
+  // now lands at Normal and the rest at Hard.
+  const armBeat = A.gap(A.L(3) ? 8 : A.L(2) ? 10 : 13);
 
   // The same trap Final Theorem fell into: this stream emitted one bullet per
   // frame at every difficulty, so its count never scaled and the slower
@@ -101,7 +106,8 @@ function* phyllotaxis(A) {
         color: s % 2 ? C.violet : C.magenta,
         life: 620,
       });
-      if (A.L(2) && s % 3 === 0) {
+      // Thinner at Normal than above it -- see armBeat above.
+      if (A.L(2) && s % (A.L(3) ? 3 : 4) === 0) {
         A.one({
           angle: -s * GOLDEN_ANGLE,
           speed: A.spd(1.2), shape: 'pellet', r: 4, color: C.rose, life: 620,
@@ -151,7 +157,16 @@ function* roseCurve(A) {
   let cyc = 0;
   while (true) {
     const petals = petalCycle[cyc % petalCycle.length];
-    const steps = Math.min(132, A.n(112, 56));
+    // Sampling density and draw time used to be the same number, and then that
+    // number was capped: `steps` is both how finely the rose is traced and how
+    // many frames tracing it takes, so the 132 cap meant Hard and Lunatic drew
+    // exactly the same rose as Normal, only with the bullets moving faster --
+    // which spreads the curve out sooner and made Hard measurably LOOSER than
+    // Normal, the one inversion left on the Fractal. Split the two: the trace
+    // keeps its couple of seconds and the tiers above Normal buy extra samples
+    // per frame instead of extra frames.
+    const per = A.L(3) ? 2 : 1;
+    const steps = Math.min(132, A.n(112, 56)) * per;
     const amp = 128;
     const dir = cyc % 2 ? -1 : 1;
 
@@ -170,7 +185,7 @@ function* roseCurve(A) {
         A.one({ x: ex, y: ey, angle: out - HALF_PI, speed: A.spd(1.25), shape: 'pellet', r: 4, color: C.rose, life: 430 });
       }
       A.mark(ex, ey, C.ice, 4);
-      yield 1;
+      if (s % per === per - 1) yield 1;
     }
 
     A.sfx('burst', 120);
@@ -178,6 +193,18 @@ function* roseCurve(A) {
       A.fan({
         n: A.n(5, 3), spread: 0.6, speed: A.spd(3.8),
         angle: A.aim(), shape: 'kunai', color: C.white, r: 4.4,
+      });
+    }
+    if (A.L(3)) {
+      // A second volley a beat later, re-aimed. Nothing structural used to
+      // arrive between Normal and Hard on this phase -- the two petal
+      // companions gate at Normal and Lunatic -- which left the step to speed
+      // alone, and a faster rose unfolds sooner and is therefore thinner where
+      // it matters.
+      yield A.w(10);
+      A.fan({
+        n: A.n(5, 3), spread: 0.45, speed: A.spd(4.2),
+        angle: A.aimLead(undefined, undefined, 4.2), shape: 'kunai', color: C.ice, r: 4.4,
       });
     }
     cyc++;
@@ -218,6 +245,24 @@ function* delayedTheorem(A) {
         });
       }
       yield A.w(26);
+    }
+    if (A.L(3)) {
+      // Hard used to add nothing here that Normal did not already have -- the
+      // star-polygon spears arrive at Normal and the homing pellets not until
+      // Lunatic -- so the whole step was density and speed, and the sweep read
+      // Delayed Theorem as the loosest thing on the Fractal at Hard. A second,
+      // half-offset snap ring answers that: it freezes on the same beat as the
+      // first and relaunches a moment later, so the pause you spend reading the
+      // first one is not free.
+      const m = A.n(20, 12);
+      for (let i = 0; i < m; i++) {
+        A.one({
+          angle: (i + 0.5) * TAU / m - k * 0.33,
+          speed: A.spd(3.4),
+          stopT: Math.round(stopAt * 0.7), goT: Math.round(goAt * 1.15), goMode: 'aim', goSpeed: A.spd(2.9),
+          shape: 'diamond', color: C.magenta, r: 4.8,
+        });
+      }
     }
     if (A.L(4)) {
       A.ring({

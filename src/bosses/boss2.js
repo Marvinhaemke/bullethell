@@ -13,10 +13,12 @@ function* loom(A) {
   A.st({ shape: 'square', color: C.magenta, r: 5.5 });
   let k = 0;
   while (true) {
-    const cols = A.n(16, 11);
+    const cols = A.nw(16, 11);
     // The gap is a fraction of the wall, not a fixed number of slots -- a
     // fixed count would swallow a sparse Novice wall whole.
-    const gapW = cols * (A.L(3) ? 0.19 : A.L(1) ? 0.20 : 0.21);
+    // Widest where the two ranks cross, which is the only place this pattern is
+    // actually tight: the gap has to admit a diagonal route through both.
+    const gapW = cols * (A.L(4) ? 0.26 : A.L(3) ? 0.21 : A.L(1) ? 0.20 : 0.21);
     const gapIdx = A.rnd.ri(1, cols - 2);
 
     if (k % 2 === 0) {
@@ -35,7 +37,7 @@ function* loom(A) {
       });
     } else {
       const fromLeft = A.rnd.r() < 0.5;
-      const rows = A.n(14, 10);
+      const rows = A.nw(14, 10);
       A.wall({
         n: rows, gapIdx: A.rnd.ri(1, rows - 2), gapW: rows * (A.L(3) ? 0.09 : A.L(1) ? 0.13 : 0.19),
         angle: fromLeft ? 0 : PI,
@@ -54,15 +56,24 @@ function* loom(A) {
       // -- the sweep put Loom at 1.00 of its column on Easy and 0.60 on
       // Normal, and it reads in play as losing a life or two to the boss's
       // opening pattern. Hard and Lunatic still get it.
+      // Sparser than the rank it crosses, and faster than it used to be. This
+      // layer travels slowest, so far more of it is resident at once than of
+      // anything else in the phase -- at Lunatic the two ranks together put 40
+      // bullets a second on screen, more than the final boss's last pattern,
+      // and Loom read as the tightest cell in the game. Three fifths of the
+      // columns keeps the lattice legible and the crossings countable.
+      const xc = Math.max(7, Math.round(cols * 0.6));
       A.wall({
         // Wider than the wall it crosses, not narrower: this gap is offset by
         // half a rank on purpose, so a tight one means threading two
         // misaligned slots at once and the room collapsed threefold the moment
-        // this layer switched on at Normal.
-        n: cols, gapIdx: (gapIdx + (cols >> 1)) % cols, gapW: gapW * 1.35,
-        angle: HALF_PI, x: PLAY.cx + (((k * 0.61) % 1) - 0.5) * (PLAY.w / cols),
+        // this layer switched on at Normal. Scaled by xc/cols so it stays the
+        // same fraction of the span now that it is cut from fewer slots.
+        n: xc, gapIdx: (Math.round(gapIdx * xc / cols) + (xc >> 1)) % xc,
+        gapW: gapW * (xc / cols) * 1.35,
+        angle: HALF_PI, x: PLAY.cx + (((k * 0.61) % 1) - 0.5) * (PLAY.w / xc),
         y: PLAY.y - 40, span: PLAY.w,
-        speed: A.spd(1.5), color: C.violet, shape: 'diamond', r: 5,
+        speed: A.spd(1.85), color: C.violet, shape: 'diamond', r: 5,
       });
     }
     if (A.L(4)) {
@@ -202,15 +213,24 @@ function* reflection(A) {
     // gradient. It now arrives at Hard, with the rest of the ladder carried by
     // density and speed.
     const bounces = A.D.layers >= 3 ? 2 : 1;
-    const bounceLife = Math.min(400, A.w(400));
+    // Lifetime as RANGE rather than frames. A bouncer is exempt from
+    // clampLife -- its lifetime IS its exit -- so `life` alone decides how far
+    // it gets, and a flat frame count means slowing the bullets down quietly
+    // shortens their reach. Slowing this ring by 18% put the far corner of the
+    // field 624px away with only 532px of travel left in a bullet, and opened
+    // a spot at Novice you could park in. 760px covers the playfield diagonal
+    // with enough left to bounce back across it.
+    const range = (v) => Math.round(760 / v);
+    const fast = A.spd(1.85);
+    const slow = A.spd(1.4);
     A.ring({
-      n: A.n(8, 4), speed: A.spd(2.25), angle: k * 0.91,
-      bounce: bounces, life: bounceLife,
+      n: A.n(8, 5), speed: fast, angle: k * 0.91,
+      bounce: bounces, life: range(fast),
     });
     if (A.L(1)) {
       A.ring({
-        n: A.n(6, 3), speed: A.spd(1.7), angle: -k * 1.3 + 0.4,
-        bounce: bounces, life: bounceLife, color: C.magenta, shape: 'hex', r: 5.2,
+        n: A.n(6, 3), speed: slow, angle: -k * 1.3 + 0.4,
+        bounce: bounces, life: range(slow), color: C.magenta, shape: 'hex', r: 5.2,
       });
     }
     if (k % 2 === 0) {
