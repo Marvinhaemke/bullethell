@@ -1,0 +1,8 @@
+# Not part of the deployed site. vercel.json's buildCommand assembles public/
+# from index.html, styles.css, src/ and music/, so everything else is here only
+# to keep the upload small.
+node_modules
+docs
+dist
+public
+.git

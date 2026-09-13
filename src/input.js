@@ -5,8 +5,11 @@ const BINDINGS = {
   right:   ['ArrowRight', 'KeyD'],
   up:      ['ArrowUp', 'KeyW'],
   down:    ['ArrowDown', 'KeyS'],
-  shoot:   ['KeyZ', 'Space'],
-  bomb:    ['KeyX', 'KeyC'],
+  // Space bombs rather than fires. With autofire on by default the fire key is
+  // barely touched, while a bomb is the one thing you reach for in a panic --
+  // so the biggest key on the keyboard belongs to it.
+  shoot:   ['KeyZ'],
+  bomb:    ['KeyX', 'Space'],
   focus:   ['ShiftLeft', 'ShiftRight'],
   confirm: ['KeyZ', 'Enter', 'NumpadEnter', 'Space'],
   cancel:  ['KeyX', 'Backspace'],

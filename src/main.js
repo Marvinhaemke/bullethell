@@ -30,8 +30,13 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// Music is optional: if music/tracks.json is absent this resolves to silence.
+// Inlined by build.py for the single-file bundle, fetched otherwise.
+if (window.__BOSSRUSH_MUSIC) game.music.accept(window.__BOSSRUSH_MUSIC);
+game.music.load();
+
 // Browsers require a gesture before audio may start.
-const unlock = () => { game.sfx.ensure(); game.sfx.resume(); };
+const unlock = () => { game.sfx.ensure(); game.sfx.resume(); game.music.resume(); };
 window.addEventListener('keydown', unlock, { once: true });
 window.addEventListener('pointerdown', unlock, { once: true });
 

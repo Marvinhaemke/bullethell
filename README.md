@@ -28,13 +28,17 @@ python3 build.py          # writes dist/index.html, a single self-contained file
 | --- | --- |
 | Arrows / WASD | Move |
 | **Shift** (hold) | Focus — half speed, the ship's heavy armament, hitbox shown |
-| **Z** / Space | Fire (hold) — unfocused mixes straight, spread and homing |
-| **X** / C | Bomb — clears bullets, damages the boss, grants invulnerability |
+| **Z** | Fire (hold) — unfocused mixes straight, spread and homing |
+| **X** / Space | Bomb — clears bullets, damages the boss, grants invulnerability |
 | **Esc** / P | Pause |
 | Shift + **R** | Restart the current boss |
-| **M** | Mute |
+| **M** | Cycle sound |
 
-Four menu options worth knowing about:
+Space bombs rather than fires. With autofire on by default the fire key is
+barely touched, while a bomb is the one thing you reach for in a panic, so the
+biggest key on the keyboard belongs to it.
+
+Menu options worth knowing about:
 
 | Option | |
 | --- | --- |
@@ -42,6 +46,12 @@ Four menu options worth knowing about:
 | **AUTOFIRE** | Fire without holding anything. On by default; holding Z still works. |
 | **AUTOPILOT** | A dodging bot plays for you. It is the same bot `npm run survive` uses to prove patterns are dodgeable, and it only ever produces inputs a human has — nine headings, focused or not, at the game's own speeds. Bombs and pause stay yours. |
 | **SHOT OPACITY** | Dim your own shots (down to hidden) so enemy bullets read more clearly in dense patterns. |
+| **SOUND** | Three levels: **ON**, **NO SHOTS**, **OFF**. `M` cycles them. |
+| **MUSIC** | Volume for whatever you put in `music/` — see [Music](#music). |
+
+**NO SHOTS** silences your own gun — the shot going out and the shot landing —
+and keeps everything else. Autofire is twenty shots a second, so that pair is
+most of what you hear; muting only one of them would not be worth a setting.
 
 Only the small red dot at your centre collides; the hull is decoration. Passing
 close to a bullet without dying scores a **graze**, which is where most of your
@@ -83,38 +93,6 @@ roughly two to three times as much — but only while you stand where the boss i
 
 The one exception is Chaos Engine's final pattern, which is a **survival**
 phase: there the clock is the win condition, and running it out is the clear.
-
-<a id="ships"></a>
-## Ships
-
-Four loadouts, chosen in the menu. Movement speed is identical across the
-roster — they differ in what they shoot, not how they dodge, which is also what
-keeps the autopilot's planning valid for all of them.
-
-Only fans and seekers are aimed at the boss when they leave the ship. Straight
-lanes are not: lining them up is the entire cost of using them, and it is why
-the two ships built around them are the slowest while dodging and the fastest
-once planted.
-
-| Ship | Unfocused | Focused | |
-| --- | --- | --- | --- |
-| **VECTOR** | 1 straight · 2 spread · 2 homing | two forward lanes | Balanced. Good everywhere, best nowhere. |
-| **TRACER** | 3 homing · 2 spread | three seekers | Lands wherever you are. Least punished for bad position, least rewarded for good. |
-| **BLOOM** | 4 spread · 1 homing | a five-wide fan | Forgiving aim. The fan spends its outer shots on empty space at range. |
-| **LANCE** | 2 straight · 1 spread · 1 homing | one heavy bolt | Highest ceiling, no margin. Dead weight unless you are under the boss. |
-
-Measured with `npm run ships`, as a multiple of par time (lower is faster):
-
-| | dodging, never focused | lined up, focused |
-| --- | --- | --- |
-| VECTOR | 1.00 | 0.49 |
-| TRACER | 0.93 | 0.46 |
-| BLOOM | 1.06 | 0.60 |
-| LANCE | 1.15 | 0.35 |
-
-The per-phase columns matter more than the totals: BLOOM and LANCE are almost
-exactly anti-correlated, because the patterns where the boss stands still are
-the ones where straight lanes land and a long-range fan wastes its edges.
 
 ### 1 · SENTINEL — *Rotational Primer*
 Clean rotational geometry. Precessing rings, two counter-wound spiral arms whose
@@ -162,6 +140,109 @@ inward from the border while a ring accelerates outward. Then a 40-second
 once on a single clock.
 
 ![Sweep lasers](docs/sweep-lasers.png)
+
+<a id="ships"></a>
+## Ships
+
+Four loadouts, chosen in the menu. Movement speed is identical across the
+roster — they differ in what they shoot, not how they dodge, which is also what
+keeps the autopilot's planning valid for all of them.
+
+Only fans and seekers are aimed at the boss when they leave the ship. Straight
+lanes are not: lining them up is the entire cost of using them, and it is why
+the two ships built around them are the slowest while dodging and the fastest
+once planted.
+
+| Ship | Unfocused | Focused | |
+| --- | --- | --- | --- |
+| **VECTOR** | 1 straight · 2 spread · 2 homing | two forward lanes | Balanced. Good everywhere, best nowhere. |
+| **TRACER** | 3 homing · 2 spread | three seekers | Lands wherever you are. Least punished for bad position, least rewarded for good. |
+| **BLOOM** | 4 spread · 1 homing | a five-wide fan | Forgiving aim. The fan spends its outer shots on empty space at range. |
+| **LANCE** | 2 straight · 1 spread · 1 homing | one heavy bolt | Highest ceiling, no margin. Dead weight unless you are under the boss. |
+
+Measured with `npm run ships`, as a multiple of par time (lower is faster):
+
+| | dodging, never focused | lined up, focused |
+| --- | --- | --- |
+| VECTOR | 1.00 | 0.49 |
+| TRACER | 0.93 | 0.46 |
+| BLOOM | 1.06 | 0.60 |
+| LANCE | 1.15 | 0.35 |
+
+The per-phase columns matter more than the totals: BLOOM and LANCE are almost
+exactly anti-correlated, because the patterns where the boss stands still are
+the ones where straight lanes land and a long-range fan wastes its edges.
+
+<a id="music"></a>
+## Music
+
+The game ships with none, and stays silent until you add some. To add tracks:
+
+```bash
+cp ~/some-track.mp3 music/
+npm run music              # writes music/tracks.json
+```
+
+That manifest is the whole mechanism. A browser cannot list a directory, so the
+generator writes down what is on disk and the game reads that. Re-run it after
+adding or removing files.
+
+By default every track joins one rotation that advances on each scene change.
+To pin one to a scene, add a `for` field to its entry:
+
+```json
+{
+  "tracks": [
+    { "file": "opening.mp3", "title": "Opening", "for": "menu" },
+    { "file": "sentinel.mp3", "title": "Sentinel", "for": "boss1" },
+    { "file": "drift.mp3", "title": "Drift" }
+  ]
+}
+```
+
+Valid values are `menu`, `boss1` … `boss5` and `results`. A scene with nothing
+pinned to it falls back to the rotation, so pinning some tracks and not others
+works fine. `"loop": false` plays an entry once instead of looping.
+
+The generator **merges**: hand-added fields survive a re-run, and only new files
+are appended and vanished ones removed.
+
+Tracks stream from an `<audio>` element rather than decoding into WebAudio
+buffers — a decoded three-minute track is ~30MB of `Float32Array` and has to
+download in full before a note plays. The cost of streaming is that music lives
+outside the sound-effect mixer, which is why it has its own volume setting
+rather than riding the SOUND level.
+
+Audio in `music/` is committed by default, because a Vercel deploy builds from
+the repository and anything uncommitted would not reach the site. To keep audio
+out of git instead, uncomment the `music/*.mp3` line in `.gitignore` and deploy
+with `vercel deploy` from your working copy.
+
+<a id="deploying"></a>
+## Deploying
+
+The game is static files, so any static host will serve it. For Vercel, import
+the repository and accept the defaults — `vercel.json` already sets everything:
+
+| | |
+| --- | --- |
+| Install | skipped — there are no runtime dependencies |
+| Build | `node tools/vercel-build.mjs` |
+| Output | `public/` |
+
+The "build" only copies `index.html`, `styles.css`, `src/` and `music/` into
+`public/`. There is nothing to compile; the point of the step is that the
+deployed file set is explicit and checkable rather than "the repository, minus
+whatever `.vercelignore` happens to exclude". It uses Node and no Python, so it
+does not depend on what the build image happens to include.
+
+```bash
+npm run vercel-build       # then serve public/ to see exactly what deploys
+```
+
+`src/*.js` is served `must-revalidate` because the filenames are not content
+hashed — a long cache would strand players on an old build. `music/` is
+immutable and cached for a year.
 
 ## How patterns are written
 
@@ -214,6 +295,7 @@ src/
   bullets.js        data-driven bullet pool
   autopilot.js      the dodging bot: in-game autopilot and test harness
   ships.js          the ship roster, as weapon-component data
+  music.js          streams whatever mp3s are in music/
   player.js  lasers.js  particles.js  sprites.js
   ui.js  input.js  audio.js  storage.js  config.js  mathx.js  rng.js
   bosses/boss1..5.js
@@ -221,6 +303,9 @@ tools/
   smoke.mjs         headless play-through of every boss at every difficulty
   census.mjs        per-phase bullet-count and frame-cost report
   ships.mjs         per-ship clear time, dodging vs lined up
+  audiokeys.mjs     sound levels, key bindings, the music drop-in path
+  music.mjs         rebuild music/tracks.json from the files on disk
+  vercel-build.mjs  assemble public/ for a static deploy
   shots.mjs         screenshot every phase
   probe.mjs         damage throughput and phase pacing
 ```
@@ -235,6 +320,8 @@ npm run margins     # how much dodging room each pattern really has
 npm run deadzones   # can you park anywhere and ignore a pattern?
 npm run bot         # autopilot quality: survival, gap width, idle drift
 npm run ships       # is every ship worth picking?
+npm run audio       # sound levels, key bindings, music end to end
+npm run music       # rebuild music/tracks.json after adding tracks
 npm run census      # per-phase bullet counts and render cost
 npm run lint
 ```

@@ -5,7 +5,8 @@ import {
   VIEW, PLAY, SIDEBAR, C, DIFFICULTIES, LIFE_MODES, GRAZE_RADIUS, SCORE,
 } from './config.js';
 import { Input } from './input.js';
-import { Sfx } from './audio.js';
+import { Sfx, SOUND_LEVELS } from './audio.js';
+import { Music } from './music.js';
 import { BulletPool } from './bullets.js';
 import { Particles } from './particles.js';
 import { Player } from './player.js';
@@ -25,8 +26,10 @@ export class Game {
     this.g = canvas.getContext('2d');
     this.input = new Input(window);
     this.sfx = new Sfx();
+    this.music = new Music();
     this.settings = loadSettings();
-    this.sfx.enabled = this.settings.sound;
+    this.sfx.level = this.settings.sound;
+    this.music.setVolume(this.settings.music);
 
     this.bullets = new BulletPool();
     this.particles = new Particles();
@@ -87,13 +90,26 @@ export class Game {
     };
     const soundItem = {
       label: 'SOUND',
-      value: () => (this.settings.sound ? 'ON' : 'OFF'),
-      change: () => {
-        this.settings.sound = !this.settings.sound;
-        this.sfx.enabled = this.settings.sound;
+      value: () => SOUND_LEVELS[this.settings.sound].name,
+      valueColor: () => (this.settings.sound === 0 ? C.dust
+        : this.settings.sound === 1 ? C.amber : C.green),
+      change: (d) => { this.cycleSound(d); },
+      hint: () => SOUND_LEVELS[this.settings.sound].blurb + ' Cycle anytime with M.',
+    };
+    const musicItem = {
+      label: 'MUSIC',
+      value: () => (this.settings.music <= 0 ? 'OFF' : Math.round(this.settings.music * 100) + '%'),
+      valueColor: () => (this.settings.music <= 0 ? C.dust
+        : this.music.available ? C.violet : C.dim),
+      change: (d) => {
+        const next = Math.round((this.settings.music + d * 0.1) * 10) / 10;
+        this.settings.music = Math.min(1, Math.max(0, next));
+        this.music.setVolume(this.settings.music);
         saveSettings(this.settings);
       },
-      hint: 'Toggle anytime with M.',
+      hint: () => (this.music.available
+        ? 'Volume for the tracks in music/.'
+        : 'No tracks found. Drop mp3s into music/ and run: npm run music'),
     };
     const autofireItem = {
       label: 'AUTOFIRE',
@@ -142,6 +158,7 @@ export class Game {
       autopilotItem,
       alphaItem,
       soundItem,
+      musicItem,
       { separator: true },
       { label: 'HOW TO PLAY', action: () => this.setScene('help'), hint: 'Controls and scoring.' },
     ]);
@@ -172,6 +189,7 @@ export class Game {
       autopilotItem,
       alphaItem,
       soundItem,
+      musicItem,
       { separator: true },
       { label: 'QUIT TO MENU', action: () => this.setScene('menu') },
     ], { onCancel: () => { this.scene = 'play'; } });
@@ -182,9 +200,23 @@ export class Game {
     ]);
   }
 
+  /** Step the sound level, wrapping. `d` may be negative from the menu's left arrow. */
+  cycleSound(d) {
+    const n = SOUND_LEVELS.length;
+    this.settings.sound = (this.settings.sound + d + n) % n;
+    this.sfx.level = this.settings.sound;
+    saveSettings(this.settings);
+  }
+
   setScene(name) {
     this.scene = name;
     this.sceneT = 0;
+    // Menus, the title and the results share one cue; fights get their boss's.
+    if (name === 'menu' || name === 'title' || name === 'select' || name === 'help') {
+      this.music.play('menu');
+    } else if (name === 'results') {
+      this.music.play('results');
+    }
     if (name === 'menu' || name === 'title') {
       this.run = null;
       this.boss = null;
@@ -222,6 +254,7 @@ export class Game {
   startBoss(index, restart) {
     const run = this.run;
     run.index = index;
+    this.music.play(`boss${index + 1}`);
     if (restart) {
       run.score = Math.max(0, run.score);
       run.deaths = 0;
@@ -357,11 +390,7 @@ export class Game {
     if (this.shake > 0) this.shake *= 0.88;
     if (this.flash > 0) this.flash *= 0.86;
 
-    if (this.input.pressed('mute')) {
-      this.settings.sound = !this.settings.sound;
-      this.sfx.enabled = this.settings.sound;
-      saveSettings(this.settings);
-    }
+    if (this.input.pressed('mute')) this.cycleSound(1);
 
     switch (this.scene) {
       case 'title':
@@ -798,7 +827,7 @@ export class Game {
     text(g, `BULLETS ${String(this.bullets.count).padStart(4, ' ')}`, x, VIEW.h - 42,
       { size: 10, color: '#4d597d', track: 1 });
     text(g, `${this.fps.toFixed(0)} FPS`, x, VIEW.h - 28, { size: 10, color: '#4d597d', track: 1 });
-    text(g, 'ESC PAUSE · M MUTE', x + w, VIEW.h - 28, { size: 10, color: '#3f4a68', align: 'right', track: 1 });
+    text(g, 'ESC PAUSE · M SOUND', x + w, VIEW.h - 28, { size: 10, color: '#3f4a68', align: 'right', track: 1 });
   }
 
   drawBossDown(g) {
@@ -849,7 +878,7 @@ export class Game {
       text(g, 'PRESS  Z  OR  ENTER', VIEW.w / 2, 500,
         { size: 18, weight: 700, align: 'center', color: C.amber, track: 6 });
     }
-    text(g, 'ARROWS / WASD MOVE · Z FIRE · SHIFT FOCUS · X BOMB',
+    text(g, 'ARROWS / WASD MOVE · Z FIRE · SHIFT FOCUS · X / SPACE BOMB',
       VIEW.w / 2, 700, { size: 11, align: 'center', color: '#59658a', track: 2 });
   }
 
@@ -993,18 +1022,20 @@ export class Game {
     const rows = [
       ['ARROWS / WASD', 'Move'],
       ['SHIFT (hold)', 'Focus: half speed, tight shot, visible hitbox'],
-      ['Z / SPACE', 'Fire (hold) — or turn AUTOFIRE on and forget it'],
+      ['Z', 'Fire (hold) — or turn AUTOFIRE on and forget it'],
       ['', 'Unfocused mixes straight, spread and homing. Focus is the ship’s specialty.'],
-      ['X / C', 'Bomb: clears bullets, damages boss, grants invulnerability'],
+      ['X / SPACE', 'Bomb: clears bullets, damages boss, grants invulnerability'],
       ['ESC / P', 'Pause'],
       ['SHIFT + R', 'Restart the current boss'],
-      ['M', 'Mute'],
+      ['M', 'Cycle sound: ON → OFF → NO SHOTS'],
     ];
     const options = [
       ['SHIP', 'Four loadouts. They differ in what focusing commits you to, not in speed.'],
       ['AUTOFIRE', 'Fire without holding anything. On by default.'],
       ['AUTOPILOT', 'A dodging bot plays for you — the same one the tests use.'],
       ['SHOT OPACITY', 'Dim your own shots so enemy bullets read more clearly.'],
+      ['SOUND', 'OFF, NO SHOTS (everything but your own gun), or ON.'],
+      ['MUSIC', 'Volume for the tracks in music/. See the README to add your own.'],
     ];
     let y = 210;
     for (const [k, v] of rows) {
