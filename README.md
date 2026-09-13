@@ -173,6 +173,56 @@ The per-phase columns matter more than the totals: BLOOM and LANCE are almost
 exactly anti-correlated, because the patterns where the boss stands still are
 the ones where straight lanes land and a long-range fan wastes its edges.
 
+<a id="difficulty"></a>
+## Judging difficulty
+
+`npm run margins` measures one thing: the largest hitbox the dodging bot can
+clear. That is **space**, and space is not all of difficulty. A homing bullet
+takes up no more room than a straight one and is far worse to be near. A bullet
+that bounces off a wall occupies the same pixels and invalidates the route you
+had planned. A faster bullet leaves the same gap and less time to use it. Two
+phases can measure identically on room and play nothing alike.
+
+`npm run difficulty` adds the missing axes. It deliberately does **not** carry a
+table of modifiers per behaviour — "homing counts double" is a guess dressed as
+a number, and it silently misses any behaviour nobody thought to tag. Instead it
+models what a player actually does: look at a bullet, assume it keeps going the
+way it is going, and plan a route through the gap. The harness records every
+nearby bullet, waits 26 frames, and measures **how much less room there turned
+out to be than that straight-line reading predicted**.
+
+One measurement, and every behaviour falls out of it at once — curvature,
+gravity, speed ramps, stop-and-snap, wall bounces, homing, orbits — each in
+proportion to how badly it breaks the assumption. A straight bullet scores zero
+no matter how fast it travels, which is right: fast-and-straight is a reaction
+problem, not a prediction one, and it lands on a different axis.
+
+| | |
+| --- | --- |
+| `room` | median clearance to the nearest bullet. Space. |
+| `drift` | how much of that room the straight-line reading got wrong. Predictability. |
+| `react` | frames until the most urgent closing bullet arrives. This is where speed shows up. |
+| `aimed` | share of bullets launched within 8° of the player. Standing still is not a plan. |
+
+They compose without fudge factors, because they are all in the same units.
+`room - drift` is the gap you can actually count on, since drift is by
+construction the amount your reading of it was wrong. `react x speed` is how far
+you can get before contact, and room you cannot reach in time is room you do not
+have — so `safety = min(room - drift, reach)`. Only the aim term is a judgement,
+and it is a flag (`--aim-cost`) rather than a constant so it can be argued with.
+
+The 26-frame horizon matches the autopilot's own lookahead. It matters — a wall
+bounce reads as 5.8px of lost room over 20 frames and 18.6px over 45 — so it
+wants a reason rather than a round number. Note the autopilot integrates each
+bullet's real behaviour where this extrapolates a straight line: that gap is the
+point, since a person reads a curve as a line and is wrong by exactly this much.
+
+Two caveats worth knowing. `room` is *typical* clearance where `npm run margins`
+answers the worst case, so the two can disagree and both be right; `--detail`
+prints a 10th-percentile column so you can see which. And `drift` only covers
+bullets already on screen — a volley that splits into three is scored as the new
+bullets it becomes, not as the prediction failure it also is.
+
 <a id="music"></a>
 ## Music
 
@@ -325,6 +375,7 @@ tools/
   ships.mjs         per-ship clear time, dodging vs lined up
   audiokeys.mjs     sound levels, key bindings, the music drop-in path
   autopsy.mjs       what kills you on one phase, and how pressure builds
+  difficulty.mjs    difficulty on space AND predictability, not space alone
   music.mjs         the music manifest scanner, and a CLI to write it out
   vercel-build.mjs  assemble public/ for a static deploy
   shots.mjs         screenshot every phase
@@ -338,6 +389,7 @@ npm install         # playwright, for the headless tests only
 npm test            # drives every boss at every difficulty in Chromium
 npm run survive     # can a player actually dodge each pattern?
 npm run margins     # how much dodging room each pattern really has
+npm run difficulty  # ...and how much of that room you can rely on
 npm run deadzones   # can you park anywhere and ignore a pattern?
 npm run autopsy -- --boss 5 --phase 4   # why is this phase hard?
 npm run bot         # autopilot quality: survival, gap width, idle drift
