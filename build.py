@@ -35,6 +35,7 @@ MODULES = [
     "src/bullets.js",
     "src/lasers.js",
     "src/player.js",
+    "src/autopilot.js",
     "src/attack.js",
     "src/patterns.js",
     "src/bosses/boss1.js",

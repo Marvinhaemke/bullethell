@@ -9,6 +9,7 @@ import { Sfx } from './audio.js';
 import { BulletPool } from './bullets.js';
 import { Particles } from './particles.js';
 import { Player } from './player.js';
+import { Autopilot } from './autopilot.js';
 import { Boss, hexAlpha } from './boss.js';
 import { BOSSES } from './bosses/index.js';
 import { loadSettings, saveSettings, submitRecord, getRecord } from './storage.js';
@@ -30,6 +31,7 @@ export class Game {
     this.particles = new Particles();
     this.lasers = [];
     this.player = new Player(this);
+    this.autopilot = new Autopilot(this);
     this.boss = null;
 
     this.frame = 0;
@@ -84,6 +86,40 @@ export class Game {
       },
       hint: 'Toggle anytime with M.',
     };
+    const autofireItem = {
+      label: 'AUTOFIRE',
+      value: () => (this.settings.autofire ? 'ON' : 'OFF'),
+      valueColor: () => (this.settings.autofire ? C.green : C.dust),
+      change: () => {
+        this.settings.autofire = !this.settings.autofire;
+        saveSettings(this.settings);
+      },
+      hint: () => (this.settings.autofire
+        ? 'Fires continuously. Holding Z still works.'
+        : 'Hold Z to fire.'),
+    };
+    const autopilotItem = {
+      label: 'AUTOPILOT',
+      value: () => (this.settings.autopilot ? 'ON' : 'OFF'),
+      valueColor: () => (this.settings.autopilot ? C.amber : C.dust),
+      change: () => {
+        this.settings.autopilot = !this.settings.autopilot;
+        this.autopilot.reset();
+        saveSettings(this.settings);
+      },
+      hint: 'Let the dodging bot play. Bombs and pause stay yours.',
+    };
+    const alphaItem = {
+      label: 'SHOT OPACITY',
+      value: () => (this.settings.shotAlpha <= 0 ? 'HIDDEN' : Math.round(this.settings.shotAlpha * 100) + '%'),
+      valueColor: () => (this.settings.shotAlpha <= 0 ? C.dust : C.cyan),
+      change: (d) => {
+        const next = Math.round((this.settings.shotAlpha + d * 0.1) * 10) / 10;
+        this.settings.shotAlpha = Math.min(1, Math.max(0, next));
+        saveSettings(this.settings);
+      },
+      hint: 'Dim your own shots so enemy bullets read more clearly.',
+    };
 
     this.mainMenu = new Menu([
       { label: 'START BOSS RUSH', action: () => this.startRun('rush', 0), hint: 'All five bosses back to back.' },
@@ -91,6 +127,10 @@ export class Game {
       { separator: true },
       diffItem,
       lifeItem,
+      { separator: true },
+      autofireItem,
+      autopilotItem,
+      alphaItem,
       soundItem,
       { separator: true },
       { label: 'HOW TO PLAY', action: () => this.setScene('help'), hint: 'Controls and scoring.' },
@@ -116,6 +156,10 @@ export class Game {
       { separator: true },
       diffItem,
       lifeItem,
+      { separator: true },
+      autofireItem,
+      autopilotItem,
+      alphaItem,
       soundItem,
       { separator: true },
       { label: 'QUIT TO MENU', action: () => this.setScene('menu') },
@@ -366,6 +410,12 @@ export class Game {
     }
 
     // --- fight ---
+    // The autopilot writes the keys it would hold, so movement still runs
+    // through the ordinary input path -- it plays the game, it does not
+    // bypass it.
+    if (this.settings.autopilot && this.player.deathAnim === 0) {
+      this.autopilot.drive(this.input, this.settings.autofire);
+    }
     this.player.update(this.input);
     if (this.boss) this.boss.update();
     this.bullets.update(this);
@@ -709,6 +759,16 @@ export class Game {
       y += 66;
     }
 
+    // Make it unmistakable that the bot is driving, not the player.
+    if (this.settings.autopilot) {
+      panel(g, x, y, w, 30, { stroke: hexAlpha(C.amber, 0.5) });
+      const blink = 0.65 + 0.35 * Math.sin(this.frame * 0.1);
+      g.globalAlpha = blink;
+      text(g, '● AUTOPILOT', x + 12, y + 20, { size: 12, weight: 700, color: C.amber, track: 2 });
+      g.globalAlpha = 1;
+      y += 40;
+    }
+
     text(g, `BULLETS ${String(this.bullets.count).padStart(4, ' ')}`, x, VIEW.h - 42,
       { size: 10, color: '#4d597d', track: 1 });
     text(g, `${this.fps.toFixed(0)} FPS`, x, VIEW.h - 28, { size: 10, color: '#4d597d', track: 1 });
@@ -870,11 +930,16 @@ export class Game {
     const rows = [
       ['ARROWS / WASD', 'Move'],
       ['SHIFT (hold)', 'Focus: half speed, tight shot, visible hitbox'],
-      ['Z / SPACE', 'Fire (hold)'],
+      ['Z / SPACE', 'Fire (hold) — or turn AUTOFIRE on and forget it'],
       ['X / C', 'Bomb: clears bullets, damages boss, grants invulnerability'],
       ['ESC / P', 'Pause'],
       ['SHIFT + R', 'Restart the current boss'],
       ['M', 'Mute'],
+    ];
+    const options = [
+      ['AUTOFIRE', 'Fire without holding anything. On by default.'],
+      ['AUTOPILOT', 'A dodging bot plays for you — the same one the tests use.'],
+      ['SHOT OPACITY', 'Dim your own shots so enemy bullets read more clearly.'],
     ];
     let y = 210;
     for (const [k, v] of rows) {
@@ -883,7 +948,16 @@ export class Game {
       y += 30;
     }
 
-    y += 24;
+    y += 16;
+    text(g, 'IN THE MENU', 124, y, { size: 11, color: '#63719a', track: 2 });
+    y += 22;
+    for (const [k, v] of options) {
+      text(g, k, 124, y, { size: 12, weight: 700, color: C.amber, track: 1 });
+      text(g, v, 330, y, { size: 12, color: C.dust });
+      y += 24;
+    }
+
+    y += 18;
     text(g, 'THE HITBOX IS THE RED DOT', 124, y, { size: 14, weight: 700, color: C.white, track: 2 });
     y += 24;
     const notes = [

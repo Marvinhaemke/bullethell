@@ -34,6 +34,14 @@ python3 build.py          # writes dist/index.html, a single self-contained file
 | Shift + **R** | Restart the current boss |
 | **M** | Mute |
 
+Three menu options worth knowing about:
+
+| Option | |
+| --- | --- |
+| **AUTOFIRE** | Fire without holding anything. On by default; holding Z still works. |
+| **AUTOPILOT** | A dodging bot plays for you. It is the same bot `npm run survive` uses to prove patterns are dodgeable, and it only ever produces inputs a human has — nine headings, focused or not, at the game's own speeds. Bombs and pause stay yours. |
+| **SHOT OPACITY** | Dim your own shots (down to hidden) so enemy bullets read more clearly in dense patterns. |
+
 Only the small red dot at your centre collides; the hull is decoration. Passing
 close to a bullet without dying scores a **graze**, which is where most of your
 points come from.
@@ -160,6 +168,7 @@ src/
   attack.js         the pattern-authoring API (A.ring, A.fan, A.polyRing, ...)
   patterns.js       shared movement scripts, cellular automata, logistic map
   bullets.js        data-driven bullet pool
+  autopilot.js      the dodging bot: in-game autopilot and test harness
   player.js  lasers.js  particles.js  sprites.js
   ui.js  input.js  audio.js  storage.js  config.js  mathx.js  rng.js
   bosses/boss1..5.js

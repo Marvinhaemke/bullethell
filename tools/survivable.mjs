@@ -91,171 +91,13 @@ await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await page.waitForFunction(() => !!window.__BOSSRUSH);
 
 // ---------------------------------------------------------------------------
-// The dodging bot, installed in the page.
+// Test harness. The bot itself lives in src/autopilot.js and ships with the
+// game, so this measures the same dodger players can switch on rather than a
+// second implementation that could drift from it.
 // ---------------------------------------------------------------------------
 await page.evaluate(() => {
   const { game } = window.__BOSSRUSH;
   const PLAY = { x: 20, y: 20, w: 672, h: 728, right: 692, bottom: 748, cx: 356 };
-
-  const HORIZON = 16;        // frames of lookahead
-  const NEAR = 150;          // only bullets this close are worth planning around
-  const REPLAN = 2;          // hold a chosen direction this many frames
-  const KEYS = {
-    '-1,-1': ['ArrowLeft', 'ArrowUp'], '0,-1': ['ArrowUp'], '1,-1': ['ArrowRight', 'ArrowUp'],
-    '-1,0': ['ArrowLeft'], '0,0': [], '1,0': ['ArrowRight'],
-    '-1,1': ['ArrowLeft', 'ArrowDown'], '0,1': ['ArrowDown'], '1,1': ['ArrowRight', 'ArrowDown'],
-  };
-  const DIRS = Object.keys(KEYS).map((k) => {
-    const [dx, dy] = k.split(',').map(Number);
-    const len = Math.hypot(dx, dy) || 1;
-    return { key: k, dx: dx / len, dy: dy / len };
-  });
-
-  // Project the bullets near the player forward, once per planning step, so
-  // every candidate move is scored against the same predicted future.
-  function projectNearby(px, py) {
-    const pool = game.bullets;
-    const out = [];
-    for (let i = 0; i < pool.n; i++) {
-      const b = pool.a[i];
-      if (b.harmless) continue;
-      const dx = b.x - px, dy = b.y - py;
-      if (dx * dx + dy * dy > (NEAR + HORIZON * 6) ** 2) continue;
-
-      // Cheap Euler roll-forward that honours the behaviours which actually
-      // bend a trajectory inside a 16-frame window.
-      const xs = new Float32Array(HORIZON);
-      const ys = new Float32Array(HORIZON);
-      let x = b.x, y = b.y, vx = b.vx, vy = b.vy, turn = b.turn;
-      const frozen = b.frozen;
-      for (let t = 0; t < HORIZON; t++) {
-        if (!frozen) {
-          if (turn !== 0) {
-            const c = Math.cos(turn), s = Math.sin(turn);
-            const nx = vx * c - vy * s;
-            vy = vx * s + vy * c; vx = nx;
-            if (b.turnDecay !== 1) turn *= b.turnDecay;
-          }
-          if (b.ax !== 0 || b.ay !== 0) { vx += b.ax; vy += b.ay; }
-          x += vx; y += vy;
-        }
-        xs[t] = x; ys[t] = y;
-      }
-      out.push({ xs, ys, r: b.hr });
-    }
-    return out;
-  }
-
-  /** Perpendicular distance from a point to a beam's line, at a given angle. */
-  function beamDistance(l, x, y, ang) {
-    const ex = l.x + Math.cos(ang) * l.len;
-    const ey = l.y + Math.sin(ang) * l.len;
-    const dx = ex - l.x, dy = ey - l.y;
-    const len2 = dx * dx + dy * dy;
-    let u = len2 > 0 ? ((x - l.x) * dx + (y - l.y) * dy) / len2 : 0;
-    u = u < 0 ? 0 : u > 1 ? 1 : u;
-    const qx = l.x + dx * u - x, qy = l.y + dy * u - y;
-    return Math.hypot(qx, qy);
-  }
-
-  /**
-   * Standing in a beam that has not fired yet is survivable this instant and
-   * fatal shortly after -- and the telegraph runs far longer than the bot's
-   * lookahead, so a purely reactive bot parks in the beam and dies when it
-   * opens. Push it out of the corridor while the warning is still up, which
-   * is exactly what the telegraph is for.
-   */
-  function beamAversion(x, y, pr) {
-    let penalty = 0;
-    for (let i = 0; i < game.lasers.length; i++) {
-      const l = game.lasers[i];
-      if (l.age >= l.warn) continue;                 // already firing: handled below
-      const framesLeft = l.warn - l.age;
-      if (framesLeft > 150) continue;                // too far off to plan around
-      // Where the beam will actually be when it opens.
-      const d = beamDistance(l, x, y, l.angle + l.spin * framesLeft);
-      const danger = l.width * 0.5 + pr + 26;
-      if (d < danger) {
-        // Sharper as the beam nears going live.
-        penalty += (1 - d / danger) * (1 - framesLeft / 150) * 4e5;
-      }
-    }
-    return penalty;
-  }
-
-  function laserThreat(x, y, t, pr) {
-    for (let i = 0; i < game.lasers.length; i++) {
-      const l = game.lasers[i];
-      // A beam that is already lethal, or becomes lethal within this window.
-      const age = l.age + t;
-      if (age < l.warn || age >= l.warn + l.fire) continue;
-      const ang = l.angle + l.spin * t;
-      const ex = l.x + Math.cos(ang) * l.len;
-      const ey = l.y + Math.sin(ang) * l.len;
-      const dx = ex - l.x, dy = ey - l.y;
-      const len2 = dx * dx + dy * dy;
-      let u = len2 > 0 ? ((x - l.x) * dx + (y - l.y) * dy) / len2 : 0;
-      u = u < 0 ? 0 : u > 1 ? 1 : u;
-      const qx = l.x + dx * u - x, qy = l.y + dy * u - y;
-      const reach = l.width * 0.5 + pr;
-      if (qx * qx + qy * qy < reach * reach) return true;
-    }
-    return false;
-  }
-
-  /**
-   * Score a candidate heading: how many frames until something hits, and how
-   * much room it leaves. Higher is safer.
-   */
-  function scoreMove(px, py, dir, speed, threats, pr) {
-    let x = px, y = py;
-    let firstHit = HORIZON;
-    let roominess = 0;
-
-    for (let t = 0; t < HORIZON; t++) {
-      x += dir.dx * speed;
-      y += dir.dy * speed;
-      if (x < PLAY.x + 10) x = PLAY.x + 10;
-      if (x > PLAY.right - 10) x = PLAY.right - 10;
-      if (y < PLAY.y + 10) y = PLAY.y + 10;
-      if (y > PLAY.bottom - 10) y = PLAY.bottom - 10;
-
-      let nearest = 1e9;
-      for (let i = 0; i < threats.length; i++) {
-        const th = threats[i];
-        const dx = th.xs[t] - x, dy = th.ys[t] - y;
-        const clear = Math.sqrt(dx * dx + dy * dy) - (th.r + pr);
-        if (clear < nearest) nearest = clear;
-        if (clear < 0 && t < firstHit) firstHit = t;
-      }
-      if (firstHit === HORIZON && laserThreat(x, y, t, pr)) firstHit = t;
-      if (firstHit < HORIZON) break;
-      roominess += Math.min(nearest, 60);
-    }
-
-    // Surviving longer dominates; among equally safe moves, prefer the one
-    // with more space, then a little preference for open field over corners.
-    const edge = Math.min(x - PLAY.x, PLAY.right - x, PLAY.bottom - y, y - PLAY.y);
-    return firstHit * 1e6 + roominess * 10 + Math.min(edge, 90) - beamAversion(x, y, pr);
-  }
-
-  function chooseMove(pr) {
-    const p = game.player;
-    const threats = projectNearby(p.x, p.y);
-    let best = null, bestScore = -Infinity;
-    for (const focus of [false, true]) {
-      const speed = focus ? 1.85 : 4.55;
-      for (const dir of DIRS) {
-        const s = scoreMove(p.x, p.y, dir, speed, threats, pr)
-          // Standing still is a legitimate move but should not win ties.
-          - (dir.dx === 0 && dir.dy === 0 ? 1 : 0)
-          // Prefer big movements when equally safe: focus is for fine work.
-          - (focus ? 2 : 0);
-        if (s > bestScore) { bestScore = s; best = { dir, focus }; }
-      }
-    }
-    return best;
-  }
 
   /**
    * Control experiment: how long does a player who never moves last? If
@@ -290,6 +132,7 @@ await page.evaluate(() => {
     game.boss.state = 'fight';
     game.boss.startPhase(phaseIdx);
     game.boss.hp = game.boss.hpMax = 1e9;    // never end the phase early
+    game.autopilot.reset();
 
     const p = game.player;
     p.x = startX;
@@ -298,19 +141,14 @@ await page.evaluate(() => {
 
     let died = -1;
     let closest = 1e9;
-    let held = null;
 
     for (let f = 0; f < frames; f++) {
       p.hitR = hitR;
       p.invuln = 0;                          // no free frames
       if (p.deathAnim > 0) { died = f; break; }
 
-      if (f % REPLAN === 0) {
-        held = chooseMove(hitR);
-      }
       game.input.down.clear();
-      for (const k of KEYS[held.dir.key]) game.input.down.add(k);
-      if (held.focus) game.input.down.add('ShiftLeft');
+      game.autopilot.drive(game.input, true);   // autofire: firing is not under test
 
       game.update();
 

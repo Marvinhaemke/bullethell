@@ -6,6 +6,9 @@ import { drawShape } from './sprites.js';
 
 const SPEED_FREE = 4.55;
 const SPEED_FOCUS = 1.85;
+
+/** The autopilot plans against these, so they must be the real values. */
+export const PLAYER_SPEED = { free: SPEED_FREE, focus: SPEED_FOCUS };
 const FIRE_INTERVAL = 3;
 const HIT_RADIUS = 2.7;
 
@@ -79,7 +82,8 @@ export class Player {
     if (this.bombAnim > 0) this.bombAnim--;
 
     if (this.fireCd > 0) this.fireCd--;
-    if (input.held('shoot') && this.fireCd === 0 && g.state === 'fight') {
+    const wantsFire = g.settings.autofire || input.held('shoot');
+    if (wantsFire && this.fireCd === 0 && g.state === 'fight') {
       this.fire();
       this.fireCd = FIRE_INTERVAL;
     }
@@ -140,11 +144,16 @@ export class Player {
   }
 
   drawShots(g) {
+    // Player shots can be dimmed so they stop competing with enemy bullets
+    // for attention -- at high density that readability matters more than
+    // seeing your own fire.
+    const alpha = this.game.settings.shotAlpha;
+    if (alpha <= 0) return;
     g.lineCap = 'round';
     for (let i = 0; i < this.shotN; i++) {
       const s = this.shots[i];
       g.strokeStyle = s.color;
-      g.globalAlpha = 0.85;
+      g.globalAlpha = alpha;
       g.lineWidth = s.r;
       g.beginPath();
       g.moveTo(s.x, s.y);

@@ -21,10 +21,16 @@ function write(key, value) {
 
 export function loadSettings() {
   const s = read(SETTINGS_KEY, {});
+  const alpha = typeof s.shotAlpha === 'number' ? s.shotAlpha : 0.85;
   return {
     diff: Number.isInteger(s.diff) ? s.diff : 2,
     life: Number.isInteger(s.life) ? s.life : 1,
     sound: s.sound !== false,
+    // Autofire on by default: there is never a reason to withhold fire here,
+    // and holding Z still works for anyone who prefers it.
+    autofire: s.autofire !== false,
+    autopilot: s.autopilot === true,
+    shotAlpha: Math.min(1, Math.max(0, alpha)),
   };
 }
 
