@@ -92,7 +92,7 @@ function* sweepLasers(A) {
     }
 
     k++;
-    yield A.w(40);
+    yield A.gap(40);
   }
 }
 
@@ -140,10 +140,10 @@ function* convergence(A) {
   // waves on Novice against 8.3 on Lunatic -- so the easier tiers got thinner
   // waves and slower bullets but no relief at all on the squeeze itself, which
   // is the thing you actually die to. A.gap() is A.w() corrected for that.
-  const wave = A.gap(38);
+  const wave = A.gap(52);
 
   while (true) {
-    const n = A.n(12, 6);
+    const n = A.n(8, 4);
     for (let i = 0; i < n; i++) {
       const u = (i + 0.5) / n + k * 0.071;
       const p = A.borderPoint(u);
@@ -155,7 +155,7 @@ function* convergence(A) {
       });
     }
     A.ring({
-      n: A.n(16, 8), speed: A.spd(1.15), angle: k * 0.41,
+      n: A.n(10, 6), speed: A.spd(1.15), angle: k * 0.41,
       accel: 0.014, maxSpeed: A.spd(4.2),
       shape: 'circle', color: C.red, r: 5,
     });
@@ -210,7 +210,7 @@ function* finalTheorem(A) {
   // proportional to density x speed leaves a population proportional to
   // density alone -- the same way every other layer here already behaves,
   // because their counts go through A.n().
-  const streamRate = A.D.density * A.D.speed * 0.55;
+  const streamRate = A.D.density * A.D.speed * 0.42;
   let streamAcc = 0;
   let s = 0;                  // stream index: advances per bullet, not per frame
 

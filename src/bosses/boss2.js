@@ -16,7 +16,7 @@ function* loom(A) {
     const cols = A.n(16, 11);
     // The gap is a fraction of the wall, not a fixed number of slots -- a
     // fixed count would swallow a sparse Novice wall whole.
-    const gapW = cols * (A.L(3) ? 0.09 : A.L(1) ? 0.13 : 0.19);
+    const gapW = cols * (A.L(3) ? 0.19 : A.L(1) ? 0.20 : 0.21);
     const gapIdx = A.rnd.ri(1, cols - 2);
 
     if (k % 2 === 0) {
@@ -48,7 +48,11 @@ function* loom(A) {
     if (A.L(2)) {
       // A second, slower weave offset by half a beat keeps the lattice moving.
       A.wall({
-        n: cols, gapIdx: (gapIdx + (cols >> 1)) % cols, gapW: gapW * 0.9,
+        // Wider than the wall it crosses, not narrower: this gap is offset by
+        // half a rank on purpose, so a tight one means threading two
+        // misaligned slots at once and the room collapsed threefold the moment
+        // this layer switched on at Normal.
+        n: cols, gapIdx: (gapIdx + (cols >> 1)) % cols, gapW: gapW * 1.35,
         angle: HALF_PI, x: PLAY.cx + (((k * 0.61) % 1) - 0.5) * (PLAY.w / cols),
         y: PLAY.y - 40, span: PLAY.w,
         speed: A.spd(1.5), color: C.violet, shape: 'diamond', r: 5,
@@ -64,7 +68,9 @@ function* loom(A) {
 
     A.sfx('shot', 80);
     k++;
-    yield A.w(34);
+    // A rank takes span/speed frames to cross, so A.w alone left about the
+    // same number of walls in flight at every tier.
+    yield A.gap(34);
   }
 }
 
@@ -172,15 +178,27 @@ function* reflection(A) {
   A.st({ shape: 'ring', color: C.violet, r: 6 });
   let k = 0;
   while (true) {
-    const bounces = 1 + (A.D.layers >> 1);
+    // A bouncing bullet has no exit -- clampLife exempts it precisely because
+    // its lifetime IS its exit -- so the population here compounds three ways
+    // at once: more bullets per wave, more waves per second, and each one
+    // crossing the field once per bounce. At Lunatic that stacked up to some
+    // 600 ricochets in a closed box, and this phase measured the single
+    // tightest cell in the game.
+    //
+    // Two caps. Bounces stop at 2, so a bullet crosses three times rather than
+    // four; and the lifetime scales with rate, so the count on screen tracks
+    // density like everywhere else. Both clamped to ease only: Normal is the
+    // reference tuning and Novice's already-generous field is left alone.
+    const bounces = Math.min(2, 1 + (A.D.layers >> 1));
+    const bounceLife = Math.min(400, A.w(400));
     A.ring({
-      n: A.n(9, 5), speed: A.spd(2.25), angle: k * 0.91,
-      bounce: bounces, life: 480,
+      n: A.n(8, 4), speed: A.spd(2.25), angle: k * 0.91,
+      bounce: bounces, life: bounceLife,
     });
     if (A.L(1)) {
       A.ring({
-        n: A.n(7, 4), speed: A.spd(1.7), angle: -k * 1.3 + 0.4,
-        bounce: bounces, life: 480, color: C.magenta, shape: 'hex', r: 5.2,
+        n: A.n(6, 3), speed: A.spd(1.7), angle: -k * 1.3 + 0.4,
+        bounce: bounces, life: bounceLife, color: C.magenta, shape: 'hex', r: 5.2,
       });
     }
     if (k % 2 === 0) {

@@ -16,3 +16,6 @@ tools/shots/
 
 # Vercel build output -- regenerate with `npm run vercel-build`
 public/
+
+# Python bytecode from the shared musicscan module
+__pycache__/

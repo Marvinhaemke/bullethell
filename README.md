@@ -173,6 +173,97 @@ The per-phase columns matter more than the totals: BLOOM and LANCE are almost
 exactly anti-correlated, because the patterns where the boss stands still are
 the ones where straight lanes land and a long-range fan wastes its edges.
 
+<a id="difficulty"></a>
+## Judging difficulty
+
+`npm run margins` measures one thing: the largest hitbox the dodging bot can
+clear. That is **space**, and space is not all of difficulty. A homing bullet
+takes up no more room than a straight one and is far worse to be near. A bullet
+that bounces off a wall occupies the same pixels and invalidates the route you
+had planned. A faster bullet leaves the same gap and less time to use it. Two
+phases can measure identically on room and play nothing alike.
+
+`npm run difficulty` adds the missing axes. It deliberately does **not** carry a
+table of modifiers per behaviour — "homing counts double" is a guess dressed as
+a number, and it silently misses any behaviour nobody thought to tag. Instead it
+models what a player actually does: look at a bullet, assume it keeps going the
+way it is going, and plan a route through the gap. The harness records every
+nearby bullet, waits 26 frames, and measures **how much less room there turned
+out to be than that straight-line reading predicted**.
+
+One measurement, and every behaviour falls out of it at once — curvature,
+gravity, speed ramps, stop-and-snap, wall bounces, homing, orbits — each in
+proportion to how badly it breaks the assumption. A straight bullet scores zero
+no matter how fast it travels, which is right: fast-and-straight is a reaction
+problem, not a prediction one, and it lands on a different axis.
+
+| | |
+| --- | --- |
+| `room` | median clearance to the nearest bullet. Space. |
+| `drift` | how much of that room the straight-line reading got wrong. Predictability. |
+| `react` | frames until the most urgent closing bullet arrives. This is where speed shows up. |
+| `aimed` | share of bullets launched within 8° of the player. Standing still is not a plan. |
+
+They compose without fudge factors, because they are all in the same units.
+`room - drift` is the gap you can actually count on, since drift is by
+construction the amount your reading of it was wrong. `react x speed` is how far
+you can get before contact, and room you cannot reach in time is room you do not
+have — so `safety = min(room - drift, reach)`. Only the aim term is a judgement,
+and it is a flag (`--aim-cost`) rather than a constant so it can be argued with.
+
+The 26-frame horizon matches the autopilot's own lookahead. It matters — a wall
+bounce reads as 5.8px of lost room over 20 frames and 18.6px over 45 — so it
+wants a reason rather than a round number. Note the autopilot integrates each
+bullet's real behaviour where this extrapolates a straight line: that gap is the
+point, since a person reads a curve as a line and is wrong by exactly this much.
+
+Two caveats worth knowing. `room` is *typical* clearance where `npm run margins`
+answers the worst case, so the two can disagree and both be right; `--detail`
+prints a 10th-percentile column so you can see which. And `drift` only covers
+bullets already on screen — a volley that splits into three is scored as the new
+bullets it becomes, not as the prediction failure it also is.
+
+## The death log
+
+Every number in `npm run difficulty` is a **model** of a player: straight-line
+prediction, a movement budget, a reaction window. Every number in `npm run
+margins` comes from a bot that plans straight lines, cannot orbit a sweep, and
+has no idea a pattern is about to do something. Both are useful and neither is
+a person.
+
+So the game records what actually kills you. `src/deaths.js` logs each death at
+the collision site — where the killing bullet is still in hand, rather than
+guessed afterwards from what happened to be nearby, which goes wrong exactly
+when the screen is busiest:
+
+| | |
+| --- | --- |
+| where | boss, pattern, difficulty, life mode, ship, seconds into the phase, position |
+| what | the bullet's colour, shape, radius, speed, and whether it was closing on you |
+| how | its behaviour — curving, bouncing, homing, accelerating, stop-go, splitting, orbiting — read off the bullet's own fields, so the list cannot go stale when a pattern changes |
+| context | bullets on screen, how many were near you, and your clearance at the instant of death |
+
+That last row is the point: `clearance` is the same quantity `npm run
+difficulty` calls `room`, so a phase whose deaths cluster at a clearance far
+above its measured room is one the model is getting wrong.
+
+The log persists to `localStorage`, capped at 400, and goes nowhere else. The
+results screen shows the top three patterns you died on. To get the raw data
+out, open the console on the game page:
+
+```js
+copy(__BOSSRUSH.game.deaths.export())   // to the clipboard
+__BOSSRUSH.game.deaths.export()         // or just read it
+```
+
+Save that to a file and `node tools/deaths.mjs deaths.json` summarises it.
+`npm run deaths -- --bot` fills a log from the dodging bot instead, which is
+useful for regression but not for tuning — the bot dies to things people do not,
+and survives things people do not. It says so plainly: run it today and every
+single death across all twenty patterns is a beam, most of them with 120–200px
+of bullet clearance, which is the straight-line planner walking into a sweep it
+cannot express a curve around.
+
 <a id="music"></a>
 ## Music
 
@@ -180,15 +271,17 @@ The game ships with none, and stays silent until you add some. To add tracks:
 
 ```bash
 cp ~/some-track.mp3 music/
-npm run music              # writes music/tracks.json
 ```
 
-That manifest is the whole mechanism. A browser cannot list a directory, so the
-generator writes down what is on disk and the game reads that. Re-run it after
-adding or removing files.
+That is the whole step. A browser cannot list a directory, so the game reads a
+manifest — but the manifest is **generated**, not maintained by hand: `serve.py`
+builds it per request, and `build.py` and the Vercel build write it at build
+time. Uploading a track through the GitHub web UI works as well as adding one
+locally, which an earlier version of this got wrong.
 
 By default every track joins one rotation that advances on each scene change.
-To pin one to a scene, add a `for` field to its entry:
+To pin one to a scene, run `npm run music` to write `music/tracks.json`, then
+add a `for` field to its entry:
 
 ```json
 {
@@ -204,8 +297,9 @@ Valid values are `menu`, `boss1` … `boss5` and `results`. A scene with nothing
 pinned to it falls back to the rotation, so pinning some tracks and not others
 works fine. `"loop": false` plays an entry once instead of looping.
 
-The generator **merges**: hand-added fields survive a re-run, and only new files
-are appended and vanished ones removed.
+Every generator **merges**: hand-added fields survive, and only new files are
+added and vanished ones dropped. `npm run music` is the only one that writes to
+the repository; the rest generate in memory or into their build output.
 
 Tracks stream from an `<audio>` element rather than decoding into WebAudio
 buffers — a decoded three-minute track is ~30MB of `Float32Array` and has to
@@ -312,16 +406,20 @@ src/
   autopilot.js      the dodging bot: in-game autopilot and test harness
   ships.js          the ship roster, as weapon-component data
   music.js          streams whatever mp3s are in music/
+  deaths.js         the death log: what killed you, where, and how crowded
   player.js  lasers.js  particles.js  sprites.js
   ui.js  input.js  audio.js  storage.js  config.js  mathx.js  rng.js
   bosses/boss1..5.js
+musicscan.py        the music manifest scanner, shared by serve.py and build.py
 tools/
   smoke.mjs         headless play-through of every boss at every difficulty
   census.mjs        per-phase bullet-count and frame-cost report
   ships.mjs         per-ship clear time, dodging vs lined up
   audiokeys.mjs     sound levels, key bindings, the music drop-in path
   autopsy.mjs       what kills you on one phase, and how pressure builds
-  music.mjs         rebuild music/tracks.json from the files on disk
+  difficulty.mjs    difficulty on space AND predictability, not space alone
+  deaths.mjs        read a death log back, or fill one with the bot
+  music.mjs         the music manifest scanner, and a CLI to write it out
   vercel-build.mjs  assemble public/ for a static deploy
   shots.mjs         screenshot every phase
   probe.mjs         damage throughput and phase pacing
@@ -334,12 +432,14 @@ npm install         # playwright, for the headless tests only
 npm test            # drives every boss at every difficulty in Chromium
 npm run survive     # can a player actually dodge each pattern?
 npm run margins     # how much dodging room each pattern really has
+npm run difficulty  # ...and how much of that room you can rely on
 npm run deadzones   # can you park anywhere and ignore a pattern?
 npm run autopsy -- --boss 5 --phase 4   # why is this phase hard?
+npm run deaths -- --bot                # what actually kills the bot
 npm run bot         # autopilot quality: survival, gap width, idle drift
 npm run ships       # is every ship worth picking?
 npm run audio       # sound levels, key bindings, music end to end
-npm run music       # rebuild music/tracks.json after adding tracks
+npm run music       # write music/tracks.json, for pinning tracks to scenes
 npm run census      # per-phase bullet counts and render cost
 npm run lint
 ```

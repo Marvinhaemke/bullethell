@@ -51,7 +51,7 @@ function* mitosis(A) {
 
     A.sfx('shot', 80);
     k++;
-    yield A.w(gens === 3 ? 46 : 34);
+    yield A.gap(gens === 3 ? 46 : 34);
   }
 }
 
@@ -76,16 +76,39 @@ function* phyllotaxis(A) {
   let lastArm = -999;
   // Arm count is fixed (it is the whole point of the layer), so the lower
   // difficulties thin the spiral by firing it half as often instead.
-  const armBeat = A.L(2) ? A.w(8) : A.w(13);
+  // ARMS is a fixed count -- eight spirals is the layer -- so the ring's
+  // population never scaled with density either, and the beat has to carry it.
+  const armBeat = A.L(2) ? A.gap(8) : A.gap(13);
+
+  // The same trap Final Theorem fell into: this stream emitted one bullet per
+  // frame at every difficulty, so its count never scaled and the slower
+  // bullets of the easier tiers simply stayed on screen longer. Emit at a rate
+  // proportional to density x speed and the population left behind is
+  // proportional to density, since time-to-cross is itself 1/speed.
+  const streamRate = A.D.density * A.D.speed * 0.48;
+  let streamAcc = 0;
+  let s = 0;                  // stream index: advances per bullet, not per frame
+
   while (true) {
-    const breathe = Math.sin(i * 0.005);
-    A.one({
-      angle: i * GOLDEN_ANGLE,
-      speed: A.spd(1.62 + 0.22 * breathe),
-      shape: 'pellet', r: 4.2,
-      color: i % 2 ? C.violet : C.magenta,
-      life: 620,
-    });
+    streamAcc += streamRate;
+    while (streamAcc >= 1) {
+      streamAcc -= 1;
+      const breathe = Math.sin(s * 0.005);
+      A.one({
+        angle: s * GOLDEN_ANGLE,
+        speed: A.spd(1.62 + 0.22 * breathe),
+        shape: 'pellet', r: 4.2,
+        color: s % 2 ? C.violet : C.magenta,
+        life: 620,
+      });
+      if (A.L(2) && s % 3 === 0) {
+        A.one({
+          angle: -s * GOLDEN_ANGLE,
+          speed: A.spd(1.2), shape: 'pellet', r: 4, color: C.rose, life: 620,
+        });
+      }
+      s++;
+    }
 
     // The arms have to go out a whole ring at a time -- one bullet per beat
     // is far too sparse to draw eight spirals.
@@ -103,12 +126,6 @@ function* phyllotaxis(A) {
       }
     }
 
-    if (A.L(2) && i % 3 === 0) {
-      A.one({
-        angle: -i * GOLDEN_ANGLE,
-        speed: A.spd(1.2), shape: 'pellet', r: 4, color: C.rose, life: 620,
-      });
-    }
     if (A.L(3) && i % 23 === 0) {
       A.fan({
         n: A.n(3, 2), spread: 0.32, speed: A.spd(4.5),

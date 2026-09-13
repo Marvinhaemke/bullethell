@@ -1,14 +1,14 @@
 # music/
 
-Drop audio files in here, then run:
+Drop audio files in here. That is the whole step — nothing to run.
 
-```bash
-npm run music
-```
+A browser cannot list a directory, so the game reads a manifest, `tracks.json`.
+It is **generated**, not maintained by hand: `serve.py` builds it per request,
+and `build.py` and the Vercel build write it at build time. Adding a track
+through the GitHub web UI works exactly as well as adding one locally.
 
-That writes `tracks.json`, which is the list the game reads — a browser cannot
-list a directory, so the manifest is how it learns what you added. Re-run it
-whenever you add or remove files.
+`npm run music` writes the file to disk. You only need it if you want to pin
+tracks to scenes, below, since that is where the pins are stored.
 
 `.mp3` plays everywhere; `.ogg`, `.m4a`, `.opus`, `.wav` and `.flac` are also
 picked up, with browser support varying.
@@ -16,8 +16,8 @@ picked up, with browser support varying.
 ## Pinning a track to a scene
 
 By default every track joins one rotation, advancing on each scene change. To
-pin one, add a `for` field to its entry in `tracks.json` — the generator
-preserves anything you add:
+pin one, run `npm run music` to write the file, then add a `for` field to the
+entry — every generator preserves anything you add:
 
 ```json
 {

@@ -10,8 +10,9 @@
 // Node only, no Python: the build image is guaranteed to have one and not
 // necessarily the other.
 
-import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { scan } from './music.mjs';
 
 const OUT = 'public';
 
@@ -40,6 +41,17 @@ for (const d of DIRS) {
     recursive: true,
     filter: (src) => !SKIP.has(src.split('/').pop()),
   });
+}
+
+// Generated rather than copied: the checked-in manifest goes stale the moment
+// a track is added without running `npm run music` -- which is exactly what
+// happens when files are uploaded through the GitHub web UI. Scanning here
+// means dropping an mp3 into music/ and pushing is the whole story.
+if (existsSync('music')) {
+  const manifest = scan('music');
+  mkdirSync(join(OUT, 'music'), { recursive: true });
+  writeFileSync(join(OUT, 'music', 'tracks.json'), JSON.stringify(manifest, null, 2) + '\n');
+  console.log(`${OUT}/music/tracks.json: ${manifest.tracks.length} track(s)`);
 }
 
 const walk = (dir) => {

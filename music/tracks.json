@@ -1,3 +1,16 @@
 {
-  "tracks": []
+  "tracks": [
+    {
+      "file": "Ashes Over Glass(1).mp3",
+      "title": "Ashes Over Glass(1)"
+    },
+    {
+      "file": "Ashes Over Glass.mp3",
+      "title": "Ashes Over Glass"
+    },
+    {
+      "file": "Desiderium.mp3",
+      "title": "Desiderium"
+    }
+  ]
 }
