@@ -14,6 +14,39 @@ import { bulletSprite, DIRECTIONAL } from './sprites.js';
 const CULL_TOP = 340;
 const CULL_SIDE = 80;
 
+// Worst-case path a bullet can take before it exits: the playfield diagonal
+// plus the cull margin, with slack for curving trajectories.
+const FIELD_SPAN = Math.ceil(Math.hypot(PLAY.w, PLAY.h) + CULL_SIDE * 2 + 60);
+
+// A bullet that legitimately expires on screen dissipates over this many
+// frames rather than popping out of existence.
+export const FADE_FRAMES = 26;
+
+/**
+ * Patterns use `life` to cap how long a bullet lingers, but a lifetime in
+ * frames is difficulty-dependent in a way that is easy to get wrong: lower
+ * difficulties scale bullet speed *down*, so the time needed to cross the
+ * playfield goes *up* while the lifetime stays fixed, and bullets wink out
+ * mid-screen.
+ *
+ * Raise any requested lifetime to at least the time this bullet needs to
+ * leave the field, so `life` can only ever trim a bullet that is already
+ * gone. Bullets that never exit on their own -- wall-bouncers and homing
+ * seekers -- are exempt, since for them the lifetime is the only exit; those
+ * fade out visibly instead.
+ */
+export function clampLife(b) {
+  if (b.life <= 0) return;
+  if (b.bounce > 0 || b.homeT > 0) return;
+  const speed = Math.hypot(b.vx, b.vy);
+  if (speed < 0.01) return;
+  // A steered bullet spirals, so its path to the edge is longer than the
+  // straight-line span; give curvature a generous allowance.
+  const slack = b.turn !== 0 ? 2.4 : 1;
+  const needed = Math.ceil((FIELD_SPAN * slack) / speed);
+  if (b.life < needed) b.life = needed;
+}
+
 export class Bullet {
   constructor() { this.init(); }
 
@@ -259,6 +292,7 @@ export class BulletPool {
       c.turn = s.turn || 0;
       c.turnDecay = s.turnDecay === undefined ? 1 : s.turnDecay;
       c.ay = s.ay || 0;
+      clampLife(c);
     }
   }
 
@@ -270,9 +304,16 @@ export class BulletPool {
       // Bullets pop in over ~5 frames so dense volleys read as a wave.
       const grow = b.age < 5 ? 0.55 + 0.09 * b.age : 1;
 
+      // Bouncers and seekers expire where you can see them, so let them
+      // dissipate -- a bullet blinking out mid-flight reads as a glitch.
+      const left = b.life > 0 ? b.life - b.age : Infinity;
+      const fading = left < FADE_FRAMES;
+
       if (b.frozen) {
         // Frozen bullets shimmer to telegraph the incoming snap.
         g.globalAlpha = 0.75 + 0.25 * Math.sin(b.age * 0.4);
+      } else if (fading) {
+        g.globalAlpha = Math.max(0, left / FADE_FRAMES);
       }
 
       const rotated = b.rot !== 0 || DIRECTIONAL.has(b.shape);
@@ -291,7 +332,7 @@ export class BulletPool {
         g.drawImage(sprite.canvas, b.x - sprite.half, b.y - sprite.half, s, s);
       }
 
-      if (b.frozen) g.globalAlpha = 1;
+      if (b.frozen || fading) g.globalAlpha = 1;
     }
   }
 

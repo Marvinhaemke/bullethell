@@ -111,10 +111,70 @@ await page.evaluate(() => {
   };
 });
 
-const bossNames = await page.evaluate(() => window.__BOSSRUSH.game.constructor.name && null);
-void bossNames;
-
 if (wantShots) mkdirSync(new URL('./shots/', import.meta.url), { recursive: true });
+
+// --- regression: bullets must never wink out inside the playfield ----------
+// A `life` in frames is difficulty-dependent -- lower difficulties slow
+// bullets down, so the time needed to cross the field grows while a fixed
+// lifetime does not. That once left several patterns evaporating mid-screen.
+// Free-flying bullets may only leave by exiting the field; wall-bouncers and
+// homing seekers are the deliberate exceptions and fade out visibly.
+console.log('Checking every phase for bullets expiring on screen...');
+const vanishing = await page.evaluate(() => {
+  const { game } = window.__BOSSRUSH;
+  const bad = [];
+  const roster = [];
+  for (let b = 0; b < 5; b++) {
+    game.debugStart(b, 2, 0);
+    roster.push({ name: game.boss.def.name, phases: game.boss.def.phases.map((p) => p.name) });
+  }
+  for (let b = 0; b < 5; b++) {
+    for (let ph = 0; ph < roster[b].phases.length; ph++) {
+      let popped = 0;
+      // Novice is the worst case: the slowest bullets, so the longest crossing.
+      for (const d of [0, 2, 4]) {
+        game.debugStart(b, d, 0);
+        game.boss.state = 'fight';
+        game.boss.startPhase(ph);
+        game.boss.hp = game.boss.hpMax = 1e9;
+        game.player.invuln = 1e9;
+
+        const pool = game.bullets;
+        const origRemove = pool.remove.bind(pool);
+        pool.remove = (i) => {
+          const bl = pool.a[i];
+          const inside = bl.x > 40 && bl.x < 672 && bl.y > 40 && bl.y < 728;
+          const exempt = bl.bounce > 0 || bl.homeT > 0 || bl.wasBouncer;
+          if (bl.life > 0 && bl.age >= bl.life && inside && !exempt) popped++;
+          origRemove(i);
+        };
+        // Tag bouncers at spawn: `bounce` counts down, so by removal time a
+        // spent bouncer is indistinguishable from a free-flying bullet.
+        const origSpawn = pool.spawn.bind(pool);
+        pool.spawn = () => { const bl = origSpawn(); bl.wasBouncer = false; return bl; };
+        for (let f = 0; f < 900; f++) {
+          game.update();
+          for (let i = 0; i < pool.n; i++) if (pool.a[i].bounce > 0) pool.a[i].wasBouncer = true;
+        }
+        pool.remove = origRemove;
+        pool.spawn = origSpawn;
+      }
+      if (popped > 0) {
+        bad.push({ boss: roster[b].name, phase: `${ph + 1}. ${roster[b].phases[ph]}`, popped });
+      }
+    }
+  }
+  return bad;
+});
+
+if (vanishing.length) {
+  for (const v of vanishing) {
+    console.log(`  ${v.boss} ${v.phase}: ${v.popped} bullets expired mid-field`);
+    failures.push(`${v.boss} ${v.phase}: ${v.popped} bullets expired inside the playfield`);
+  }
+} else {
+  console.log('  none — every bullet leaves by exiting the field.\n');
+}
 
 console.log('boss  diff  frames  maxBullets  endPhase  bulletsLeft  note');
 console.log('-'.repeat(74));
