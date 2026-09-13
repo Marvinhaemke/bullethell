@@ -35,7 +35,8 @@ export class Boss {
     this.phaseIndex = -1;
     this.phase = null;
     this.hp = 1; this.hpMax = 1;
-    this.timer = 0;
+    this.timer = 0;      // survival phases only: counts down to the clear
+    this.elapsed = 0;    // damage phases: counts up, for the speed bonus
     this.state = 'intro';       // intro | fight | break | dead
     this.stateT = 0;
     this.spin = 0;
@@ -62,7 +63,11 @@ export class Boss {
     const scale = this.game.diff.bossHp;
     this.hpMax = Math.max(1, Math.round((this.phase.hp || 0) * scale));
     this.hp = this.hpMax;
+    // A damage phase has no time limit; `time` is only the par it is scored
+    // against. For a survival phase the clock *is* the win condition.
     this.timer = this.phase.time || 60 * 60;
+    this.par = this.phase.time || 60 * 60;
+    this.elapsed = 0;
     this.phaseNoMiss = true;
     this.state = 'fight';
     this.stateT = 0;
@@ -88,11 +93,11 @@ export class Boss {
     const dealt = Math.min(this.hp, amount);
     this.hp -= dealt;
     this.flash = Math.min(8, this.flash + 2);
-    if (this.hp <= 0) this.breakPhase(false);
+    if (this.hp <= 0) this.breakPhase();
     return dealt;
   }
 
-  breakPhase(timedOut) {
+  breakPhase() {
     const g = this.game;
     this.state = 'break';
     this.stateT = 0;
@@ -106,7 +111,7 @@ export class Boss {
     g.particles.ring(this.x, this.y, C.white, 18, 22, 26, 3);
     g.particles.shards(this.x, this.y, this.def.color, this.def.shape, 22, 5, 52);
 
-    g.onPhaseCleared(this.phaseIndex, timedOut, this.timer, this.phaseNoMiss);
+    g.onPhaseCleared(this.phaseIndex, this.elapsed, this.par, this.phaseNoMiss);
   }
 
   update() {
@@ -151,9 +156,13 @@ export class Boss {
     this.x = clamp(this.x, PLAY.x + 56, PLAY.right - 56);
     this.y = clamp(this.y, PLAY.y + 56, PLAY.y + 340);
 
-    if (this.timer > 0) {
+    this.elapsed++;
+    // Only a survival phase ends on the clock -- and there, running it out is
+    // the clear, not a fallback. Damage phases end when their health does, so
+    // there is no timer quietly rescuing a player who cannot break them.
+    if (this.phase.survival && this.timer > 0) {
       this.timer--;
-      if (this.timer === 0) this.breakPhase(true);
+      if (this.timer === 0) this.breakPhase();
     }
   }
 

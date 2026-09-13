@@ -20,9 +20,17 @@ function* loom(A) {
     const gapIdx = A.rnd.ri(1, cols - 2);
 
     if (k % 2 === 0) {
+      // Walk the whole rank sideways by an irrational-ish fraction of a lane
+      // each volley. Lane spacing is far wider than the player, so columns
+      // that land in the same place every time leave a slot you can simply
+      // stand in and let every wall pass by -- which makes the moving gap,
+      // the entire point of the pattern, irrelevant. Drifting the phase means
+      // no slot survives two volleys.
+      const lane = PLAY.w / cols;
       A.wall({
         n: cols, gapIdx, gapW, angle: HALF_PI,
-        x: PLAY.cx, y: PLAY.y - 14, span: PLAY.w,
+        x: PLAY.cx + (((k * 0.37) % 1) - 0.5) * lane,
+        y: PLAY.y - 14, span: PLAY.w,
         speed: A.spd(2.35),
       });
     } else {
@@ -41,7 +49,8 @@ function* loom(A) {
       // A second, slower weave offset by half a beat keeps the lattice moving.
       A.wall({
         n: cols, gapIdx: (gapIdx + (cols >> 1)) % cols, gapW: gapW * 0.9,
-        angle: HALF_PI, x: PLAY.cx, y: PLAY.y - 40, span: PLAY.w,
+        angle: HALF_PI, x: PLAY.cx + (((k * 0.61) % 1) - 0.5) * (PLAY.w / cols),
+        y: PLAY.y - 40, span: PLAY.w,
         speed: A.spd(1.5), color: C.violet, shape: 'diamond', r: 5,
       });
     }

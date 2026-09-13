@@ -1,13 +1,20 @@
 // Player ship: movement, focus mode, forward shots, bombs, death handling.
 
-import { TAU, clamp } from './mathx.js';
+import { TAU, PI, HALF_PI, clamp } from './mathx.js';
 import { PLAY, C } from './config.js';
 import { drawShape } from './sprites.js';
+import { shipAt } from './ships.js';
 
 const SPEED_FREE = 4.55;
 const SPEED_FOCUS = 1.85;
+
+/** The autopilot plans against these, so they must be the real values. */
+export const PLAYER_SPEED = { free: SPEED_FREE, focus: SPEED_FOCUS };
 const FIRE_INTERVAL = 3;
 const HIT_RADIUS = 2.7;
+
+// A homing shot that misses would otherwise circle forever.
+const SHOT_LIFE = 220;
 
 class Shot {
   constructor() { this.init(); }
@@ -15,6 +22,8 @@ class Shot {
     this.x = 0; this.y = 0; this.vx = 0; this.vy = 0;
     this.dmg = 10; this.r = 3.5; this.len = 12;
     this.color = C.ice;
+    this.homing = 0;
+    this.age = 0;
     this.alive = true;
   }
 }
@@ -79,7 +88,8 @@ export class Player {
     if (this.bombAnim > 0) this.bombAnim--;
 
     if (this.fireCd > 0) this.fireCd--;
-    if (input.held('shoot') && this.fireCd === 0 && g.state === 'fight') {
+    const wantsFire = g.settings.autofire || input.held('shoot');
+    if (wantsFire && this.fireCd === 0 && g.state === 'fight') {
       this.fire();
       this.fireCd = FIRE_INTERVAL;
     }
@@ -89,37 +99,85 @@ export class Player {
     this.updateShots();
   }
 
+  /**
+   * Fire the active ship's loadout for the current stance. Both stances mix
+   * weapon kinds; what the ship chooses is what focusing commits you to.
+   */
   fire() {
     const g = this.game;
     g.sfx.play('shoot', 60);
-    if (this.focus) {
-      // Focused: two tight high-damage lances.
-      for (let i = -1; i <= 1; i += 2) {
-        const s = this.spawnShot();
-        s.x = this.x + i * 7; s.y = this.y - 12;
-        s.vx = 0; s.vy = -19;
-        s.dmg = 23; s.r = 3.6; s.len = 17;
-        s.color = C.cyan;
+    const ship = shipAt(g.settings.ship);
+    const list = this.focus ? ship.focused : ship.unfocused;
+    for (let i = 0; i < list.length; i++) this.fireWeapon(list[i]);
+  }
+
+  /** Spawn one weapon component's volley. */
+  fireWeapon(w) {
+    const n = Math.max(1, w.n);
+    // A fan is aimed: pointed at the boss at the instant it leaves the ship.
+    // Straight lanes are not -- lining them up is the whole cost of using
+    // them. Homing is aimed too, but only as a head start on its own steering.
+    const boss = this.game.boss;
+    const target = boss && boss.state === 'fight' ? boss : null;
+    const aim = target ? Math.atan2(target.y - (this.y - 11), target.x - this.x) : -HALF_PI;
+
+    for (let i = 0; i < n; i++) {
+      // -0.5 .. +0.5 across the volley, 0 for a single shot.
+      const t = n === 1 ? 0 : i / (n - 1) - 0.5;
+      const s = this.spawnShot();
+
+      let ang = -HALF_PI;
+      let ox = 0;
+      if (w.kind === 'straight') {
+        // Parallel lanes: no angle, just lateral offset.
+        ox = t * (w.lane || 0);
+      } else {
+        ang = aim + t * (w.spread || 0);
+        // Start the outer shots slightly wide so the fan reads as a fan.
+        ox = t * (w.spread || 0) * 40;
       }
-    } else {
-      // Unfocused: a wider three-lane spray.
-      const angles = [-0.16, 0, 0.16];
-      for (let i = 0; i < 3; i++) {
-        const a = -Math.PI / 2 + angles[i];
-        const s = this.spawnShot();
-        s.x = this.x + angles[i] * 40; s.y = this.y - 10;
-        s.vx = Math.cos(a) * 16.5; s.vy = Math.sin(a) * 16.5;
-        s.dmg = 10; s.r = 4; s.len = 12;
-        s.color = i === 1 ? C.ice : C.blue;
-      }
+
+      s.x = this.x + ox;
+      s.y = this.y - 11;
+      s.vx = Math.cos(ang) * w.speed;
+      s.vy = Math.sin(ang) * w.speed;
+      s.dmg = w.dmg;
+      s.r = w.r;
+      s.len = w.len;
+      s.color = w.color;
+      s.homing = w.kind === 'homing' ? w.turn : 0;
     }
   }
 
   updateShots() {
+    const boss = this.game.boss;
+    // Only steer at a boss that can actually be hit; between phases the shots
+    // just fly on rather than circling an invulnerable target.
+    const target = boss && boss.state === 'fight' ? boss : null;
+
     for (let i = 0; i < this.shotN; i++) {
       const s = this.shots[i];
+      s.age++;
+
+      if (s.homing > 0 && target) {
+        const want = Math.atan2(target.y - s.y, target.x - s.x);
+        let cur = Math.atan2(s.vy, s.vx);
+        let d = (want - cur) % TAU;
+        if (d > PI) d -= TAU; else if (d < -PI) d += TAU;
+        cur += clamp(d, -s.homing, s.homing);
+        const sp = Math.hypot(s.vx, s.vy);
+        s.vx = Math.cos(cur) * sp;
+        s.vy = Math.sin(cur) * sp;
+      }
+
       s.x += s.vx; s.y += s.vy;
-      if (s.y < PLAY.y - 20 || s.x < PLAY.x - 30 || s.x > PLAY.right + 30 || !s.alive) {
+
+      // A homing shot that overshoots curls back round, so it needs a
+      // lifetime -- leaving the top of the screen is no longer the only exit.
+      const gone = !s.alive || s.age > SHOT_LIFE
+        || s.y < PLAY.y - 30 || s.y > PLAY.bottom + 40
+        || s.x < PLAY.x - 40 || s.x > PLAY.right + 40;
+      if (gone) {
         this.shots[i] = this.shots[this.shotN - 1];
         this.shots[this.shotN - 1] = s;
         this.shotN--; i--;
@@ -140,11 +198,16 @@ export class Player {
   }
 
   drawShots(g) {
+    // Player shots can be dimmed so they stop competing with enemy bullets
+    // for attention -- at high density that readability matters more than
+    // seeing your own fire.
+    const alpha = this.game.settings.shotAlpha;
+    if (alpha <= 0) return;
     g.lineCap = 'round';
     for (let i = 0; i < this.shotN; i++) {
       const s = this.shots[i];
       g.strokeStyle = s.color;
-      g.globalAlpha = 0.85;
+      g.globalAlpha = alpha;
       g.lineWidth = s.r;
       g.beginPath();
       g.moveTo(s.x, s.y);
@@ -158,6 +221,7 @@ export class Player {
   draw(g) {
     if (this.deathAnim > 0) return;
 
+    const ship = shipAt(this.game.settings.ship);
     const blink = this.invuln > 0 && (this.pulse >> 2) % 2 === 0;
     g.save();
     g.translate(this.x, this.y);
@@ -166,7 +230,7 @@ export class Player {
     // Focus aura: counter-rotating brackets that tighten as you slow down.
     if (this.focus) {
       const a = this.pulse * 0.05;
-      g.strokeStyle = C.cyan;
+      g.strokeStyle = ship.color;
       g.globalAlpha = (blink ? 0.3 : 0.7);
       g.lineWidth = 1.4;
       for (let k = 0; k < 2; k++) {
@@ -181,14 +245,14 @@ export class Player {
       g.globalAlpha = blink ? 0.45 : 1;
     }
 
-    // Hull: a simple triangle with a bright outline.
+    // Hull: the ship's own silhouette, dark-filled with a bright outline.
     g.rotate(-Math.PI / 2);
-    drawShape(g, 'tri', 11, '#0b1524', C.ice, 1.8);
+    drawShape(g, ship.shape, 11, '#0b1524', C.ice, 1.8);
     g.rotate(Math.PI / 2);
 
     // Wings react to lateral movement.
     const tilt = clamp(this.vx / SPEED_FREE, -1, 1);
-    g.strokeStyle = C.blue;
+    g.strokeStyle = ship.color;
     g.lineWidth = 1.6;
     g.globalAlpha *= 0.9;
     g.beginPath();
@@ -212,7 +276,7 @@ export class Player {
 
     // Thruster flicker.
     g.globalAlpha = 0.8;
-    g.fillStyle = C.cyan;
+    g.fillStyle = ship.color;
     const fl = 4 + Math.sin(this.pulse * 0.7) * 2;
     g.beginPath();
     g.moveTo(-3.5, 9); g.lineTo(0, 9 + fl); g.lineTo(3.5, 9);

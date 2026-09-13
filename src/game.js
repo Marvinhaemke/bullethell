@@ -9,6 +9,8 @@ import { Sfx } from './audio.js';
 import { BulletPool } from './bullets.js';
 import { Particles } from './particles.js';
 import { Player } from './player.js';
+import { SHIPS, shipAt } from './ships.js';
+import { Autopilot } from './autopilot.js';
 import { Boss, hexAlpha } from './boss.js';
 import { BOSSES } from './bosses/index.js';
 import { loadSettings, saveSettings, submitRecord, getRecord } from './storage.js';
@@ -30,6 +32,7 @@ export class Game {
     this.particles = new Particles();
     this.lasers = [];
     this.player = new Player(this);
+    this.autopilot = new Autopilot(this);
     this.boss = null;
 
     this.frame = 0;
@@ -50,6 +53,7 @@ export class Game {
 
   get diff() { return DIFFICULTIES[this.settings.diff]; }
   get lifeMode() { return LIFE_MODES[this.settings.life]; }
+  get ship() { return shipAt(this.settings.ship); }
 
   // -------------------------------------------------------------------------
   // Menus
@@ -74,6 +78,13 @@ export class Game {
       change: (d) => cycle('life', LIFE_MODES, d),
       hint: () => this.lifeMode.blurb,
     };
+    const shipItem = {
+      label: 'SHIP',
+      value: () => this.ship.name,
+      valueColor: () => this.ship.color,
+      change: (d) => cycle('ship', SHIPS, d),
+      hint: () => this.ship.blurb,
+    };
     const soundItem = {
       label: 'SOUND',
       value: () => (this.settings.sound ? 'ON' : 'OFF'),
@@ -84,6 +95,40 @@ export class Game {
       },
       hint: 'Toggle anytime with M.',
     };
+    const autofireItem = {
+      label: 'AUTOFIRE',
+      value: () => (this.settings.autofire ? 'ON' : 'OFF'),
+      valueColor: () => (this.settings.autofire ? C.green : C.dust),
+      change: () => {
+        this.settings.autofire = !this.settings.autofire;
+        saveSettings(this.settings);
+      },
+      hint: () => (this.settings.autofire
+        ? 'Fires continuously. Holding Z still works.'
+        : 'Hold Z to fire.'),
+    };
+    const autopilotItem = {
+      label: 'AUTOPILOT',
+      value: () => (this.settings.autopilot ? 'ON' : 'OFF'),
+      valueColor: () => (this.settings.autopilot ? C.amber : C.dust),
+      change: () => {
+        this.settings.autopilot = !this.settings.autopilot;
+        this.autopilot.reset();
+        saveSettings(this.settings);
+      },
+      hint: 'Let the dodging bot play. Bombs and pause stay yours.',
+    };
+    const alphaItem = {
+      label: 'SHOT OPACITY',
+      value: () => (this.settings.shotAlpha <= 0 ? 'HIDDEN' : Math.round(this.settings.shotAlpha * 100) + '%'),
+      valueColor: () => (this.settings.shotAlpha <= 0 ? C.dust : C.cyan),
+      change: (d) => {
+        const next = Math.round((this.settings.shotAlpha + d * 0.1) * 10) / 10;
+        this.settings.shotAlpha = Math.min(1, Math.max(0, next));
+        saveSettings(this.settings);
+      },
+      hint: 'Dim your own shots so enemy bullets read more clearly.',
+    };
 
     this.mainMenu = new Menu([
       { label: 'START BOSS RUSH', action: () => this.startRun('rush', 0), hint: 'All five bosses back to back.' },
@@ -91,6 +136,11 @@ export class Game {
       { separator: true },
       diffItem,
       lifeItem,
+      shipItem,
+      { separator: true },
+      autofireItem,
+      autopilotItem,
+      alphaItem,
       soundItem,
       { separator: true },
       { label: 'HOW TO PLAY', action: () => this.setScene('help'), hint: 'Controls and scoring.' },
@@ -116,6 +166,11 @@ export class Game {
       { separator: true },
       diffItem,
       lifeItem,
+      shipItem,
+      { separator: true },
+      autofireItem,
+      autopilotItem,
+      alphaItem,
       soundItem,
       { separator: true },
       { label: 'QUIT TO MENU', action: () => this.setScene('menu') },
@@ -198,8 +253,11 @@ export class Game {
 
   addShake(v) { this.shake = Math.min(26, this.shake + v); }
 
-  onPhaseCleared(phaseIndex, timedOut, timerLeft, noMiss) {
-    const bonusTime = timedOut ? 0 : Math.round((timerLeft / 60) * SCORE.timeBonus);
+  onPhaseCleared(phaseIndex, elapsed, par, noMiss) {
+    // Scored against par rather than against a countdown: break it faster than
+    // the pattern's par time and the surplus is the bonus.
+    const underPar = Math.max(0, (par - elapsed) / 60);
+    const bonusTime = Math.round(underPar * SCORE.timeBonus);
     let gain = SCORE.phaseClear + bonusTime;
     if (noMiss) gain += SCORE.phaseNoMiss;
     this.addScore(gain);
@@ -366,6 +424,12 @@ export class Game {
     }
 
     // --- fight ---
+    // The autopilot writes the keys it would hold, so movement still runs
+    // through the ordinary input path -- it plays the game, it does not
+    // bypass it.
+    if (this.settings.autopilot && this.player.deathAnim === 0) {
+      this.autopilot.drive(this.input, this.settings.autofire);
+    }
     this.player.update(this.input);
     if (this.boss) this.boss.update();
     this.bullets.update(this);
@@ -635,10 +699,20 @@ export class Game {
     g.textBaseline = 'alphabetic';
     text(g, boss.def.name, x, y - 5, { size: 13, weight: 700, color: C.white, track: 2 });
     const ph = boss.phase;
-    if (ph) {
+    if (ph && ph.survival) {
+      // Survival is the one place a clock still decides anything, and here
+      // running it down is the win, so it goes green as it closes.
       const secs = Math.ceil(boss.timer / 60);
-      text(g, secs.toString().padStart(2, '0'), PLAY.right - 14, y - 5,
-        { size: 15, weight: 700, align: 'right', color: secs <= 10 ? C.red : '#8ea0c8' });
+      text(g, 'SURVIVE ' + secs.toString().padStart(2, '0'), PLAY.right - 14, y - 5,
+        { size: 15, weight: 700, align: 'right', color: secs <= 10 ? C.green : C.ice, track: 1 });
+    } else if (ph) {
+      // Damage phases have no deadline. The clock counts up, and dims past par
+      // so you can see the speed bonus slipping away without being rushed.
+      const secs = Math.floor(boss.elapsed / 60);
+      const overPar = boss.elapsed > boss.par;
+      text(g, `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`,
+        PLAY.right - 14, y - 5,
+        { size: 15, weight: 700, align: 'right', color: overPar ? '#5b6688' : '#8ea0c8' });
     }
   }
 
@@ -674,14 +748,16 @@ export class Game {
       run ? run.bombs : 0, this.lifeMode.bombs, C.cyan, 'circle', 9, 14);
 
     y += 90;
-    panel(g, x, y, w, 62);
+    panel(g, x, y, w, 86);
     text(g, 'DIFFICULTY', x + 12, y + 20, { size: 10, color: '#63719a', track: 2 });
     text(g, this.diff.name, x + w - 12, y + 21, { size: 14, weight: 700, align: 'right', color: this.diff.color, track: 1 });
     text(g, 'MODE', x + 12, y + 44, { size: 10, color: '#63719a', track: 2 });
     text(g, this.lifeMode.name, x + w - 12, y + 45, { size: 12, weight: 700, align: 'right', color: C.dust, track: 1 });
+    text(g, 'SHIP', x + 12, y + 68, { size: 10, color: '#63719a', track: 2 });
+    text(g, this.ship.name, x + w - 12, y + 69, { size: 12, weight: 700, align: 'right', color: this.ship.color, track: 1 });
 
     // Boss roster with progress ticks.
-    y += 76;
+    y += 100;
     text(g, 'ROSTER', x, y, { size: 10, color: '#63719a', track: 2 });
     y += 12;
     for (let i = 0; i < BOSSES.length; i++) {
@@ -707,6 +783,16 @@ export class Game {
       text(g, this.boss.phase.name.toUpperCase(), x + 12, y + 38,
         { size: 13, weight: 700, color: this.boss.def.color, track: 1 });
       y += 66;
+    }
+
+    // Make it unmistakable that the bot is driving, not the player.
+    if (this.settings.autopilot) {
+      panel(g, x, y, w, 30, { stroke: hexAlpha(C.amber, 0.5) });
+      const blink = 0.65 + 0.35 * Math.sin(this.frame * 0.1);
+      g.globalAlpha = blink;
+      text(g, '● AUTOPILOT', x + 12, y + 20, { size: 12, weight: 700, color: C.amber, track: 2 });
+      g.globalAlpha = 1;
+      y += 40;
     }
 
     text(g, `BULLETS ${String(this.bullets.count).padStart(4, ' ')}`, x, VIEW.h - 42,
@@ -817,11 +903,48 @@ export class Game {
     text(g, 'DOTS = EXTRA PATTERN LAYERS', px + 16, py + 218, { size: 9, color: '#4d597d', track: 1 });
     text(g, '× = BULLET DENSITY', px + 16, py + 234, { size: 9, color: '#4d597d', track: 1 });
 
+    this.drawShipPanel(g, px, py + 268);
+
     const rec = getRecord(this.recordKey('rush', 'all'));
     if (rec) {
       text(g, 'BEST RUSH · ' + this.diff.name + ' · ' + this.lifeMode.name,
         124, 640, { size: 10, color: '#63719a', track: 2 });
       text(g, rec.toLocaleString(), 124, 668, { size: 22, weight: 700, color: C.amber });
+    }
+  }
+
+  /**
+   * Armament readout: what the selected ship fires in each stance. The point
+   * of the roster is the trade between stances, so both are shown side by
+   * side rather than only the one you are holding.
+   */
+  drawShipPanel(g, px, py) {
+    const ship = this.ship;
+    panel(g, px, py, 264, 140);
+    text(g, 'ARMAMENT', px + 16, py + 24, { size: 10, color: '#63719a', track: 2 });
+
+    g.save();
+    g.translate(px + 232, py + 26);
+    g.rotate(-Math.PI / 2);
+    g.shadowColor = ship.color; g.shadowBlur = 14;
+    drawShape(g, ship.shape, 11, '#0b1524', ship.color, 1.6);
+    g.shadowBlur = 0;
+    g.restore();
+
+    text(g, ship.name, px + 16, py + 48, { size: 17, weight: 700, color: ship.color, track: 3 });
+
+    const stances = [['UNFOCUSED', ship.unfocused], ['FOCUSED', ship.focused]];
+    for (let i = 0; i < stances.length; i++) {
+      const [name, list] = stances[i];
+      const yy = py + 76 + i * 32;
+      text(g, name, px + 16, yy, { size: 9, color: '#4d597d', track: 1 });
+      let cx = px + 16;
+      for (let k = 0; k < list.length; k++) {
+        const w = list[k];
+        const label = `${w.n}×${w.kind.toUpperCase()}`;
+        text(g, label, cx, yy + 16, { size: 10, weight: 700, color: w.color, track: 1 });
+        cx += label.length * 7 + 12;
+      }
     }
   }
 
@@ -870,11 +993,18 @@ export class Game {
     const rows = [
       ['ARROWS / WASD', 'Move'],
       ['SHIFT (hold)', 'Focus: half speed, tight shot, visible hitbox'],
-      ['Z / SPACE', 'Fire (hold)'],
+      ['Z / SPACE', 'Fire (hold) — or turn AUTOFIRE on and forget it'],
+      ['', 'Unfocused mixes straight, spread and homing. Focus is the ship’s specialty.'],
       ['X / C', 'Bomb: clears bullets, damages boss, grants invulnerability'],
       ['ESC / P', 'Pause'],
       ['SHIFT + R', 'Restart the current boss'],
       ['M', 'Mute'],
+    ];
+    const options = [
+      ['SHIP', 'Four loadouts. They differ in what focusing commits you to, not in speed.'],
+      ['AUTOFIRE', 'Fire without holding anything. On by default.'],
+      ['AUTOPILOT', 'A dodging bot plays for you — the same one the tests use.'],
+      ['SHOT OPACITY', 'Dim your own shots so enemy bullets read more clearly.'],
     ];
     let y = 210;
     for (const [k, v] of rows) {
@@ -883,7 +1013,16 @@ export class Game {
       y += 30;
     }
 
-    y += 24;
+    y += 16;
+    text(g, 'IN THE MENU', 124, y, { size: 11, color: '#63719a', track: 2 });
+    y += 22;
+    for (const [k, v] of options) {
+      text(g, k, 124, y, { size: 12, weight: 700, color: C.amber, track: 1 });
+      text(g, v, 330, y, { size: 12, color: C.dust });
+      y += 24;
+    }
+
+    y += 18;
     text(g, 'THE HITBOX IS THE RED DOT', 124, y, { size: 14, weight: 700, color: C.white, track: 2 });
     y += 24;
     const notes = [
@@ -892,8 +1031,8 @@ export class Game {
       'source of points beyond raw damage.',
       '',
       'Each boss has multiple patterns. Depleting a pattern\'s health bar',
-      'clears the screen and advances to the next. Let the timer run out',
-      'and the pattern still ends, but you forfeit the time bonus.',
+      'clears the screen and advances to the next. There is no time limit:',
+      'clearing under the pattern\'s par time is what pays the speed bonus.',
       '',
       'Lives are granted per boss, so every fight starts on equal footing.',
     ];
