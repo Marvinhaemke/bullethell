@@ -1,0 +1,57 @@
+:root {
+  color-scheme: dark;
+  --ink: #7c88a8;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  color: var(--ink);
+  font: 12px/1.5 ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px;
+  /* Faint radial wash so the black canvas edge does not vanish into the page. */
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 45%, #0a0d16 0%, #000 70%);
+}
+
+#stage {
+  position: relative;
+  line-height: 0;
+}
+
+canvas#game {
+  display: block;
+  background: #000;
+  border: 1px solid #171d2c;
+  border-radius: 3px;
+  box-shadow: 0 0 60px -14px #1d5cff55, 0 0 0 1px #05070c;
+  touch-action: none;
+  /* Sizing is driven from JS so the 4:3 playfield always fits the viewport. */
+}
+
+#footnote {
+  margin: 0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 10px;
+  opacity: 0.6;
+  text-align: center;
+}
+
+#footnote b { color: #b9c6e6; font-weight: 600; }
+
+@media (max-height: 560px) {
+  #footnote { display: none; }
+}
