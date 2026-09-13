@@ -9,13 +9,16 @@
     "build": "python3 build.py",
     "lint": "eslint src tools",
     "test": "node tools/smoke.mjs",
+    "audio": "node tools/audiokeys.mjs",
     "survive": "node tools/survivable.mjs",
     "margins": "node tools/survivable.mjs --sweep",
     "census": "node tools/census.mjs",
     "shots": "node tools/shots.mjs",
     "deadzones": "node tools/safespots.mjs",
     "ships": "node tools/ships.mjs",
-    "bot": "node tools/botbench.mjs"
+    "bot": "node tools/botbench.mjs",
+    "music": "node tools/music.mjs",
+    "vercel-build": "node tools/vercel-build.mjs"
   },
   "devDependencies": {
     "playwright": "^1.56.1"

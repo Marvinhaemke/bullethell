@@ -19,21 +19,36 @@ function write(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* ignore */ }
 }
 
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+/**
+ * `sound` used to be a boolean and is now a level (0 off, 1 no shots, 2 on).
+ * Saved settings from before the change still say true/false, so map them
+ * rather than dropping the player back to the default.
+ */
+function soundLevel(v) {
+  if (v === true) return 2;
+  if (v === false) return 0;
+  return Number.isInteger(v) && v >= 0 && v <= 2 ? v : 2;
+}
+
 export function loadSettings() {
   const s = read(SETTINGS_KEY, {});
   const alpha = typeof s.shotAlpha === 'number' ? s.shotAlpha : 0.85;
+  const music = typeof s.music === 'number' ? s.music : 0.6;
   return {
     diff: Number.isInteger(s.diff) ? s.diff : 2,
     life: Number.isInteger(s.life) ? s.life : 1,
     // Upper bound is left to shipAt(), so this module stays free of any
     // dependency on the roster.
     ship: Number.isInteger(s.ship) && s.ship >= 0 ? s.ship : 0,
-    sound: s.sound !== false,
+    sound: soundLevel(s.sound),
+    music: clamp01(music),
     // Autofire on by default: there is never a reason to withhold fire here,
     // and holding Z still works for anyone who prefers it.
     autofire: s.autofire !== false,
     autopilot: s.autopilot === true,
-    shotAlpha: Math.min(1, Math.max(0, alpha)),
+    shotAlpha: clamp01(alpha),
   };
 }
 

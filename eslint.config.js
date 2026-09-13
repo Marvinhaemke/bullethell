@@ -14,6 +14,13 @@ export default [
         process: 'readonly',
         URL: 'readonly',
         AudioContext: 'readonly',
+        Audio: 'readonly',
+        fetch: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        setTimeout: 'readonly',
+        // Node-side, for the tools; they also run browser code via evaluate().
+        Buffer: 'readonly',
       },
     },
     rules: {

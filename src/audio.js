@@ -1,12 +1,35 @@
 // Tiny WebAudio synth. No samples, no assets -- just oscillators and noise
 // bursts so the build stays a handful of text files.
 
+/** Sound levels, in the order the menu cycles them. */
+export const SOUND_OFF = 0;
+export const SOUND_NO_SHOTS = 1;
+export const SOUND_ON = 2;
+export const SOUND_LEVELS = [
+  { name: 'OFF', blurb: 'Silence.' },
+  { name: 'NO SHOTS', blurb: 'Everything except your own gun. Autofire is 20 shots a second.' },
+  { name: 'ON', blurb: 'Everything.' },
+];
+
+// What your own fire sounds like: the shot going out and the shot landing.
+// Both repeat at the fire rate, which is what makes them the pair worth
+// silencing on their own -- muting one while the other machine-guns away
+// would not be worth a setting.
+const SHOT_SOUNDS = new Set(['shoot', 'hit']);
+
 export class Sfx {
   constructor() {
     this.ctx = null;
     this.master = null;
-    this.enabled = true;
+    this.level = SOUND_ON;
     this.lastAt = Object.create(null);
+  }
+
+  /** True if a cue at this name would be audible right now. */
+  audible(name) {
+    if (this.level === SOUND_OFF) return false;
+    if (this.level === SOUND_NO_SHOTS && SHOT_SOUNDS.has(name)) return false;
+    return true;
   }
 
   ensure() {
@@ -26,7 +49,7 @@ export class Sfx {
 
   tone(freq, dur, type = 'square', vol = 0.2, slideTo = 0) {
     const ctx = this.ensure();
-    if (!ctx || !this.enabled) return;
+    if (!ctx || this.level === SOUND_OFF) return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -43,7 +66,7 @@ export class Sfx {
 
   noise(dur, vol = 0.2, cutoff = 1800, sweepTo = 0) {
     const ctx = this.ensure();
-    if (!ctx || !this.enabled) return;
+    if (!ctx || this.level === SOUND_OFF) return;
     const t = ctx.currentTime;
     const frames = Math.max(1, Math.floor(ctx.sampleRate * dur));
     const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
@@ -64,7 +87,7 @@ export class Sfx {
 
   /** Rate-limited so a 20-shots-per-second stream does not turn into mush. */
   play(name, minGapMs = 0) {
-    if (!this.enabled) return;
+    if (!this.audible(name)) return;
     const now = performance.now();
     if (minGapMs && this.lastAt[name] && now - this.lastAt[name] < minGapMs) return;
     this.lastAt[name] = now;

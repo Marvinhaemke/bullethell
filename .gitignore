@@ -8,3 +8,11 @@ dist/
 tools/shots/
 
 .DS_Store
+
+# Audio dropped into music/ IS tracked on purpose: a Vercel deploy builds from
+# the repo, so anything not committed would not reach the deployed site.
+# Uncomment to keep audio out of git and deploy with `vercel deploy` instead.
+# music/*.mp3
+
+# Vercel build output -- regenerate with `npm run vercel-build`
+public/
