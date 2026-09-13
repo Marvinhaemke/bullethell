@@ -1,0 +1,10 @@
+node_modules/
+package-lock.json
+
+# Build output -- regenerate with `python3 build.py`
+dist/
+
+# Screenshot dumps from tools/shots.mjs (docs/ holds the curated ones)
+tools/shots/
+
+.DS_Store
