@@ -45,8 +45,15 @@ function* loom(A) {
       });
     }
 
-    if (A.L(2)) {
+    if (A.L(3)) {
       // A second, slower weave offset by half a beat keeps the lattice moving.
+      //
+      // Gated at L(3) rather than L(2). This layer is the whole difference
+      // between one wall to thread and two misaligned ones, and switching it
+      // on at Normal made that the single largest step anywhere on the ladder
+      // -- the sweep put Loom at 1.00 of its column on Easy and 0.60 on
+      // Normal, and it reads in play as losing a life or two to the boss's
+      // opening pattern. Hard and Lunatic still get it.
       A.wall({
         // Wider than the wall it crosses, not narrower: this gap is offset by
         // half a rank on purpose, so a tight one means threading two
@@ -189,7 +196,12 @@ function* reflection(A) {
     // four; and the lifetime scales with rate, so the count on screen tracks
     // density like everywhere else. Both clamped to ease only: Normal is the
     // reference tuning and Novice's already-generous field is left alone.
-    const bounces = Math.min(2, 1 + (A.D.layers >> 1));
+    // 1/1/1/2/2. A second bounce doubles how long a bullet stays in the box
+    // AND squares the number of reflections you have to hold in your head, so
+    // turning it on at Normal was a step-change in chaos rather than a
+    // gradient. It now arrives at Hard, with the rest of the ladder carried by
+    // density and speed.
+    const bounces = A.D.layers >= 3 ? 2 : 1;
     const bounceLife = Math.min(400, A.w(400));
     A.ring({
       n: A.n(8, 4), speed: A.spd(2.25), angle: k * 0.91,
