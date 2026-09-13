@@ -19,6 +19,7 @@ import { TAU, PI, HALF_PI, clamp, angleTo } from './mathx.js';
 import { PLAY, C } from './config.js';
 import { RNG } from './rng.js';
 import { Laser } from './lasers.js';
+import { clampLife } from './bullets.js';
 
 export class Attack {
   constructor(game, boss, seed) {
@@ -138,6 +139,9 @@ export class Attack {
       b.y = b.orbCy + Math.sin(b.orbA) * b.orbR;
       b.vx = 0; b.vy = 0;
     }
+    // A lifetime may only trim a bullet that has already left the field.
+    if (b.orbT > 0) b.life = 0;
+    else clampLife(b);
     return b;
   }
 
