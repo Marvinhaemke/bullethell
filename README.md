@@ -175,6 +175,8 @@ tools/
 ```bash
 npm install         # playwright, for the headless tests only
 npm test            # drives every boss at every difficulty in Chromium
+npm run survive     # can a player actually dodge each pattern?
+npm run margins     # how much dodging room each pattern really has
 npm run census      # per-phase bullet counts and render cost
 npm run lint
 ```
