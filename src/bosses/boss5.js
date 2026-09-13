@@ -147,11 +147,18 @@ function* convergence(A) {
     for (let i = 0; i < n; i++) {
       const u = (i + 0.5) / n + k * 0.071;
       const p = A.borderPoint(u);
+      // Below Hard, only half the ring tracks you; the rest converges on the
+      // centre. At 92% aimed this was the most aggressively targeted pattern
+      // in the game, and because every wave re-aims, no spot stays safe for
+      // long -- which is what makes it read as random rather than as a shape
+      // to solve. The unaimed half gives the wave a structure that holds still
+      // long enough to be read.
+      const tracks = A.L(3) || i % 2 === 0;
       A.one({
         x: p.x, y: p.y,
-        angle: A.aim(p.x, p.y),
+        angle: tracks ? A.aim(p.x, p.y) : Math.atan2(PLAY.cy - p.y, PLAY.cx - p.x),
         speed: A.spd(2.7),
-        shape: 'kunai', color: C.rose, r: 4.7,
+        shape: 'kunai', color: tracks ? C.rose : C.magenta, r: 4.7,
       });
     }
     A.ring({
@@ -214,6 +221,14 @@ function* finalTheorem(A) {
   // proportional to density x speed leaves a population proportional to
   // density alone -- the same way every other layer here already behaves,
   // because their counts go through A.n().
+  //
+  // Thinning this on the lower tiers was tried and reverted. Easy reads as the
+  // tightest cell in its column and the obvious lever is the stream, but a
+  // quarter off it made Easy TIGHTER, reproducibly and at six starts: what is
+  // left when the stream thins is the automaton rings and the curving fans,
+  // which are the fast layers, so the field gets sparser and more urgent at
+  // once. Easy stays as tuned. Being the hardest thing on an Easy run is the
+  // job of the final boss's survival phase.
   const streamRate = A.D.density * A.D.speed * 0.37;
   let streamAcc = 0;
   let s = 0;                  // stream index: advances per bullet, not per frame
@@ -275,17 +290,13 @@ function* finalTheorem(A) {
     // Periodic beam pair.
     if (A.L(1) && i % laserEvery === laserEvery - 1) {
       const a0 = A.aim();
-      // A rotating beam outruns the player past a radius of speed/spin, and a
-      // flat 0.008 put that limit at 569px on every tier -- inside the
-      // playfield, so from the bottom of the screen Novice was exactly as
-      // unoutrunnable as Lunatic, with nothing telegraphing it. Sweep Lasers
-      // already scales its spin by difficulty; this one did not.
-      //
-      // Both this and the telegraph are clamped to ease only, like A.gap():
-      // Novice's outrun limit moves out to 790px -- past anywhere the player
-      // can stand, so running works again -- and Normal upward keep the beam
-      // they were tuned with.
-      const spin = 0.008 * Math.min(1, A.D.speed);
+      // Static, not rotating. A sweep here is a different proposition from the
+      // one in Sweep Lasers, because it turns over a curtain several hundred
+      // bullets deep: being caught on the wrong side of it does not mean
+      // running, it means crossing that curtain, and there is often no route.
+      // Held still it asks one fair question -- get off this line -- and the
+      // curtain stays the thing you are actually dodging.
+      const spin = 0;
       const warn = Math.max(50, A.w(50));
       A.laser({ angle: a0, spin, warn, fire: A.w(110), width: 13, color: C.red, follow: true });
       A.laser({ angle: a0 + PI, spin, warn, fire: A.w(110), width: 13, color: C.red, follow: true });

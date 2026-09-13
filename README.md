@@ -97,8 +97,9 @@ phase: there the clock is the win condition, and running it out is the clear.
 ### 1 · SENTINEL — *Rotational Primer*
 Clean rotational geometry. Precessing rings, two counter-wound spiral arms whose
 reversal bunches them into a wall, and expanding regular polygons — each bullet
-rides its own edge's outward normal, so the polygon keeps straight edges as it
-grows — with a rotating notch to aim for.
+is carried outward along its own radius at a speed proportional to how far out
+it starts, which is a homothety, so the polygon keeps straight edges and grows
+in proportion — with a notch that follows you to aim for.
 
 ### 2 · WEAVER — *Lattice Interference*
 Grids and interference. Crossing walls with gaps that move diagonally; two
@@ -137,7 +138,10 @@ fully deterministic, never periodic. Rotating beam sweeps over a pellet curtain.
 Three emitters riding Lissajous curves across the field. Bullets converging
 inward from the border while a ring accelerates outward. Then a 40-second
 **survival** phase where the boss is invulnerable and four generators run at
-once on a single clock.
+once on a single clock — its beam pair is *held still* rather than swept, which
+is the one place in the game a sweep was the wrong call: it turns over a curtain
+several hundred bullets deep, so being caught on the wrong side of it does not
+mean running, it means crossing that curtain, and often there is no route.
 
 ![Sweep lasers](docs/sweep-lasers.png)
 
@@ -203,13 +207,40 @@ problem, not a prediction one, and it lands on a different axis.
 | `drift` | how much of that room the straight-line reading got wrong. Predictability. |
 | `react` | frames until the most urgent closing bullet arrives. This is where speed shows up. |
 | `aimed` | share of bullets launched within 8° of the player. Standing still is not a plan. |
+| `tight` | the 10th-percentile `room`. You die at a pattern's pinch points, not in its typical conditions. |
+| `flux` | bullets newly entering the planning radius per second. Reported, not scored. |
+| `aimRate` | aimed launches per second — the same events as `aimed`, counted absolutely. Reported, not scored. |
 
 They compose without fudge factors, because they are all in the same units.
-`room - drift` is the gap you can actually count on, since drift is by
+`tight - drift` is the gap you can actually count on, since drift is by
 construction the amount your reading of it was wrong. `react x speed` is how far
-you can get before contact, and room you cannot reach in time is room you do not
-have — so `safety = min(room - drift, reach)`. Only the aim term is a judgement,
-and it is a flag (`--aim-cost`) rather than a constant so it can be argued with.
+you can get before contact — so
+
+```
+safety = sqrt( (tight - drift) x react x speed x (1 - aimCost x aimed) )
+```
+
+It used to be `min()` of those two budgets, and the run log is what changed it.
+The two patterns a player reported as hardest on Normal were the extremes on
+exactly the axes `min()` throws away — one killing with bullets at 9.4px/frame
+against a 1.5–3.8 norm, the other at 92% aimed — and both scored as unremarkable,
+because `reach` ran three to ten times `clearance` and the `min` never picked it.
+That is precisely the under-weighting of bullet speed the player had described
+from the other end. A product says what a `min` cannot: tight space **and** little
+time is worse than either alone. Against deaths-per-attempt over twenty patterns
+the product scores **−0.651** where `min()` scored **−0.316**.
+
+Calibrating on one session of one player is worth being honest about. It fixes a
+structural flaw that was visible without the data and settles a choice between
+two defensible formulas; it is not a fit, and where the data could not separate
+two options the existing one was kept. `flux` is the clearest example — it is the
+axis a player means by "it feels random", it is measured, and folding it in as a
+third term moved the correlation to −0.568, so it stays reported and unscored.
+So does `aimRate`: a *share* can be diluted by bolting an unaimed ring onto a
+pattern, which is visibly what used to happen to Gear Release between Easy and
+Normal, but every rate-based variant scored −0.449 against the share's −0.446 —
+inside the noise on seventeen phases. The aim term is the one judgement left, and
+it is a flag (`--aim-cost`) rather than a constant so it can be argued with.
 
 The 26-frame horizon matches the autopilot's own lookahead. It matters — a wall
 bounce reads as 5.8px of lost room over 20 frames and 18.6px over 45 — so it
@@ -378,10 +409,11 @@ function* cardinalBloom(A) {
 }
 ```
 
-Difficulty threads through five helpers — `A.n()` scales counts, `A.spd()`
-scales velocity, `A.w()` scales delays, `A.gap()` scales delays *between
-waves*, and `A.L(k)` gates a whole optional sub-pattern. That last one is what
-makes the difficulties structurally different.
+Difficulty threads through six helpers — `A.n()` scales counts, `A.nw()` scales
+the count of a rank that fills a *fixed span*, `A.spd()` scales velocity,
+`A.w()` scales delays, `A.gap()` scales delays *between waves*, and `A.L(k)`
+gates a whole optional sub-pattern. That last one is what makes the difficulties
+structurally different.
 
 `A.gap()` exists because of a mistake worth not repeating. Some patterns are
 hard because of how many waves are in flight at once rather than how dense one
@@ -399,11 +431,54 @@ bullets on screen at Novice and 809 at Lunatic — a 3% difficulty range on a
 phase where every other pattern spans sixfold. Anything spawned at a fixed rate
 needs its rate scaled, or the easier tiers get slower bullets and more of them.
 
+`A.nw()` is the same trap from the other side: a count that *does* scale, on a
+rank where scaling it stops helping. A ring grows as it travels, so adding
+bullets to one costs the player a little room; a wall's span never changes, so
+every column added subtracts directly from the lane spacing, and once a lane is
+thinner than the ship the extra columns only add flux. Loom ran 27 columns
+across a 672px playfield at Lunatic — 45% of the width solid, two misaligned
+ranks of it at once — and measured as the tightest cell in the game on the
+second boss's *opening* pattern. `A.nw()` damps the density step by half, and
+only upward: Normal is the reference tuning, so the tiers below it keep the
+counts they were designed with.
+
+Three more of the same family turned up in one pass over the sweep, each showing
+as a phase that got *looser* the harder the difficulty:
+
+- **`polyRing` never expanded.** Every bullet on an edge took that edge's
+  outward normal, which translates the edge rigidly — so a triangle's 45px edge
+  was still 45px three hundred pixels out, where the shape it traces needs
+  565px. The ring covered about 6% of its own perimeter by the time it reached
+  the player, and `perSide` only packed bullets tighter into the same short
+  bars. Moving each bullet along its own radius at a speed proportional to its
+  distance from the centre is a homothety: the polygon stays a polygon.
+- **Rose Curve capped its own density.** `steps` was both how finely the rose is
+  traced and how many frames tracing it takes, and it was clamped at 132 — so
+  Hard and Lunatic drew the same rose as Normal with faster bullets, which
+  spreads it thinner. Sampling and draw time had to be separated.
+- **Polygon Cage's notch is aimed at the player,** which makes `A.aim()`'s
+  jitter run backwards: everywhere else a tighter aim is a harder pattern, but
+  a precisely aimed *escape hatch* is a gift, and Lunatic was handing it over
+  perfectly. Worth knowing what did **not** work — moving the notch off the
+  player, by a fixed angle or a random one, measured *easier* both times. An
+  opening that does not follow you is one you can walk to and then stop.
+
 Bullet behaviour is data, not closures, so the pool stays allocation-free while
 still supporting gravity (`ax`/`ay`), constant-curvature steering (`turn`,
 `turnDecay`), speed ramps (`accel`, `minSpeed`, `maxSpeed`), stop-and-snap
 (`stopT`, `goT`, `goMode`), wall bounces (`bounce`), soft homing (`homeT`,
 `homeK`), orbit-then-release (`orbit`) and recursive splitting (`split`).
+
+`maxSpeed` applies to anything that gains speed, not only to `accel` — a gravity
+arc has a terminal velocity too. It used to be copied onto the bullet only
+inside the `accel` branch, so a pattern could set `ay` and `maxSpeed` together
+and have the limit silently dropped at spawn. Ballistic Rain did exactly that,
+which is how its lobs came to land at 13.5px/frame against a 1.5–3.8 norm and
+became the pattern a player reported as the game's worst difficulty spike. The
+cap is applied **along the direction of the acceleration only**: scaling the
+whole velocity vector also shortens how far an arc travels sideways, which
+pulled those lobs in from the edges and opened a corner of the screen that
+nothing could reach.
 
 ## Layout
 

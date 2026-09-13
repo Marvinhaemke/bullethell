@@ -14,7 +14,7 @@ function* ballisticRain(A) {
   A.st({ shape: 'circle', color: C.amber, r: 5.5 });
   let k = 0;
   while (true) {
-    const n = A.n(11, 6);
+    const n = A.n(9, 5);
     const g = 0.075 * A.D.speed;
     const swing = Math.sin(k * 0.5) * 0.34;
 
@@ -24,7 +24,13 @@ function* ballisticRain(A) {
       A.one({
         angle: ang,
         speed: A.spd(4.6 + (i % 3) * 0.55),
-        ay: g, maxSpeed: 11,
+        // The cap was a flat 11, unscaled -- so these arcs terminal-velocitied
+        // at roughly three times the speed of anything else in the game, at
+        // every difficulty. The run log caught it: the average bullet that
+        // killed a player here was doing 9.42px/frame against 1.5-3.8 for
+        // every other pattern, and crossing their path rather than closing on
+        // it. Fast and sideways is the combination that reads as random.
+        ay: g, maxSpeed: A.spd(6.5),
       });
     }
 
@@ -41,14 +47,14 @@ function* ballisticRain(A) {
         const x = A.rnd.rr(PLAY.x + 40, PLAY.right - 40);
         A.one({
           x, y: PLAY.y - 40, angle: HALF_PI + A.rnd.rr(-0.3, 0.3),
-          speed: A.spd(1.2), ay: g * 0.8, maxSpeed: 9,
+          speed: A.spd(1.2), ay: g * 0.8, maxSpeed: A.spd(5.5),
           shape: 'hex', color: C.red, r: 6,
         });
       }
     }
     A.sfx('shot', 80);
     k++;
-    yield A.gap(18);
+    yield A.gap(21);
   }
 }
 
@@ -123,6 +129,23 @@ function* gearRelease(A) {
           speed: A.spd(3.0),
           shape: 'hex', color: g % 2 ? C.amber : C.orange, r: 5.6, spin: 0.05,
         });
+        if (A.L(2)) {
+          // A second rank half a slot over, released slower from just inside.
+          //
+          // One gear leaves as one radial ring, and a radial ring is the most
+          // forgiving thing in the game once it has expanded: its spacing grows
+          // with the distance it has travelled, so by the time it reaches you
+          // the gaps are wider than the screen was dense. The sweep had Gear
+          // Release at nearly twice its column from Normal up, and Easy reading
+          // TIGHTER than Normal, because the pellet rings that arrive at Normal
+          // do nothing but dilute the aimed share. Paired ranks mean the gap you
+          // pick has to still be a gap when the second rank arrives.
+          A.one({
+            orbit: { r: R - 13, a: (i + 0.5) * TAU / n + g * 0.4 + k * 0.2, w, t: hold, grow: 0.06, follow: true },
+            speed: A.spd(2.2),
+            shape: 'pellet', color: C.amber, r: 4.4, spin: 0.05,
+          });
+        }
       }
       A.sfx('charge', 200);
       yield A.w(16);

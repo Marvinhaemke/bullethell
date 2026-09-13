@@ -974,11 +974,15 @@ export class Game {
     this.drawMenuBackdrop(g, this.sceneT);
     text(g, 'BOSS RUSH', 120, 150, { size: 46, weight: 700, color: C.white, track: 8, glow: C.blue, glowSize: 22 });
     text(g, 'SELECT YOUR TERMS', 124, 178, { size: 11, color: C.dust, track: 5 });
-    this.mainMenu.draw(g, 124, 270, { width: 430, size: 17, lineHeight: 40 });
+    // The menu has grown to thirteen items and four rules; at the old 40px
+    // spacing from y=270 it ran to y=862 in a 768-tall view, so the last rows
+    // fell off the bottom and the best-score readout below it landed on top of
+    // MUSIC. Sized to fit what is actually in it.
+    const menuBottom = this.mainMenu.draw(g, 124, 244, { width: 430, size: 16, lineHeight: 33 });
     if (this.logNoteT > 0) {
       this.logNoteT--;
       g.globalAlpha = Math.min(1, this.logNoteT / 40);
-      text(g, `LOG ${this.logNote}`, 124, 700,
+      text(g, `LOG ${this.logNote}`, 124, Math.min(VIEW.h - 18, menuBottom + 26),
         { size: 12, color: this.logNote === 'BLOCKED' ? C.red : C.teal, track: 3 });
       g.globalAlpha = 1;
     }
@@ -1008,12 +1012,14 @@ export class Game {
 
     this.drawShipPanel(g, px, py + 268);
 
+    // In the right column, under the armament panel: the left one is full.
     const rec = getRecord(this.recordKey('rush', 'all'));
     if (rec) {
       text(g, 'BEST RUSH · ' + this.diff.name + ' · ' + this.lifeMode.name,
-        124, 640, { size: 10, color: '#63719a', track: 2 });
-      text(g, rec.toLocaleString(), 124, 668, { size: 22, weight: 700, color: C.amber });
+        px + 16, 686, { size: 10, color: '#63719a', track: 2 });
+      text(g, rec.toLocaleString(), px + 16, 716, { size: 22, weight: 700, color: C.amber });
     }
+    void menuBottom;
   }
 
   /**

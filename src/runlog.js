@@ -197,12 +197,17 @@ export class RunLog {
 
     // How much room there was at the instant of death, and how crowded it was:
     // the two numbers the difficulty sweep predicts, so they can be compared.
+    //
+    // The killing bullet is excluded. It is by definition overlapping, so
+    // counting it pinned this to about -1px on every death and made the column
+    // useless -- the question worth answering is whether you were boxed in or
+    // caught by a single shot with room all around.
     let nearest = Infinity;
     let near = 0;
     const pool = game.bullets;
     for (let i = 0; i < pool.n; i++) {
       const b = pool.a[i];
-      if (b.harmless) continue;
+      if (b.harmless || b === bullet) continue;
       const d = Math.hypot(b.x - p.x, b.y - p.y) - b.hr - p.hitR;
       if (d < nearest) nearest = d;
       if (d < 190) near++;

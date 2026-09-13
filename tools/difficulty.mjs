@@ -49,16 +49,53 @@
 //   aimed   share of nearby bullets launched within 8 degrees of the player.
 //           Position: aimed fire means standing still is not a plan, so part
 //           of your movement budget goes on repositioning.
+//   aimRate aimed launches per second -- the same events counted absolutely
+//           rather than as a share. Reported only.
+//
+//           A share can be diluted: bolting an unaimed ring onto a pattern
+//           lowers it without making anything safer, and that is visibly what
+//           happens to Gear Release between Easy and Normal. A rate cannot be.
+//           But a rate over-counts wide rings, where some bullets always
+//           happen to be heading at you, and against the run log the two forms
+//           are indistinguishable -- every rate variant tried scored -0.449 to
+//           the share's -0.446, inside the noise on seventeen phases. So the
+//           share stays, on the grounds that it is the one already calibrated,
+//           and the rate stays visible next to it as the check on that call.
+//   flux    bullets newly entering the planning radius per second. Density and
+//           speed together -- a faster field sweeps more past you per second,
+//           and so does a denser one. This is the axis a player means by "it
+//           feels random": not that any one bullet is unpredictable, but that
+//           the picture is replaced faster than it can be read.
+//
+//           Reported, but deliberately NOT in the headline number. Folding it
+//           in as a third term moved the correlation against real play from
+//           -0.651 to -0.568, so it is either already carried by the other two
+//           or it is noise, and a term that sounds right is not a reason to
+//           keep one the data does not support. It stays because it is cheap
+//           and it is the axis to look at first when a phase reads as chaotic.
 //
 // COMBINING THEM
 //
-// room and drift are both in pixels and compose without a fudge factor:
-// clearance = room - drift is the gap you can actually count on, because drift
-// is by construction the amount your reading of the gap was wrong.
+// tight and drift are both in pixels and compose without a fudge factor:
+// clearance = tight - drift is the pinch-point gap you can count on, because
+// drift is by construction the amount your reading of it was wrong.
 //
 // Reaction converts to pixels the same way: reach = react x player speed is how
-// far you can get before contact. Needing room you cannot reach in time is the
-// same as not having it, so safety = min(clearance, reach).
+// far you can get before contact.
+//
+// safety is then their GEOMETRIC MEAN, not min(). A player log settled this:
+// the two patterns reported as hardest on Normal were the extremes on exactly
+// the axes min() was discarding -- one killing with bullets at 9.4px/frame
+// against a 1.5-3.8 norm, the other at 92% aimed -- and both scored as
+// unremarkable, because reach ran three to ten times clearance and the min()
+// never picked it. Against deaths-per-attempt over twenty patterns the product
+// scores -0.651 where min() scored -0.316.
+//
+// Calibrating a difficulty model on one session of one player is worth being
+// honest about: it fixes a structural flaw that was visible without the data,
+// and it settles a choice between two defensible formulas. It is not a fit, and
+// the sample is small enough that the exact weighting inside the product was
+// left alone where the data could not separate it.
 //
 // The aim term is the one judgement call here, and it is exposed as --aim-cost
 // so it can be argued with: aimed fire is charged as a fraction of the movement
@@ -101,6 +138,9 @@ const OUTLIER = num('--outlier', 0.75);
 const ONLY_BOSS = args.includes('--boss') ? num('--boss', 1) - 1 : null;
 const ONLY_PHASE = args.includes('--phase') ? num('--phase', 1) - 1 : null;
 const DETAIL = args.includes('--detail');
+// Raw axes as JSON, so formulas can be compared against a player log without
+// re-running the sweep for each one.
+const JSON_OUT = args.includes('--json');
 const PORT = num('--port', 8400 + (process.pid % 200));
 
 const server = spawn('python3', ['serve.py', String(PORT), '--quiet'], { stdio: 'ignore' });
@@ -178,6 +218,12 @@ await page.evaluate(() => {
     const reacts = [];
     let aimedHits = 0;
     let aimedSeen = 0;
+    // Bullets newly entering the planning radius, counted once each. This is
+    // density x speed by construction -- a faster field sweeps more bullets
+    // past you per second, and so does a denser one -- which is the pairing
+    // that reads as "random and fast" in play.
+    let entered = 0;
+    let wasNear = new Set();
 
     // Ring of snapshots: each entry is a Map(id -> [x, y, vx, vy]) of the
     // bullets that were near the player on that frame.
@@ -228,7 +274,9 @@ await page.evaluate(() => {
         }
 
         nearNow.set(b.__id, [b.x, b.y, b.vx, b.vy]);
+        if (!wasNear.has(b.__id)) entered++;
       }
+      wasNear = new Set(nearNow.keys());
 
       if (room < 1e9) rooms.push(room);
       if (soonest < 1e9) reacts.push(soonest);
@@ -268,9 +316,11 @@ await page.evaluate(() => {
     return {
       room: median(rooms),
       tight: p10(rooms),
+      flux: (entered * 60) / frames,
       drift: p90(drifts),
       react: median(reacts),
       aimed: aimedSeen ? aimedHits / aimedSeen : 0,
+      aimRate: (aimedHits * 60) / frames,
       samples: { rooms: rooms.length, drifts: drifts.length, reacts: reacts.length },
     };
   };
@@ -303,11 +353,29 @@ const roster = await page.evaluate(() => {
 const DIFFN = ['NOVICE', 'EASY', 'NORMAL', 'HARD', 'LUNATIC'];
 const bosses = ONLY_BOSS === null ? [0, 1, 2, 3, 4] : [ONLY_BOSS];
 
-/** Fold the four axes into one number of pixels. See the header. */
+/**
+ * Fold the axes into one number of pixels, calibrated against a player log.
+ *
+ * The geometric mean of two budgets: the room at the pinch points you can
+ * actually rely on, and how far you can travel before the nearest threat
+ * arrives. Both in pixels, so their geometric mean is too.
+ *
+ * Not min(). min() reports the tightest budget and discards the rest, and since
+ * reach ran three to ten times clearance on nearly every phase, speed and aim
+ * were being measured and then thrown away -- which is exactly the complaint a
+ * player log arrived with. A product says what min() cannot: tight space AND
+ * little time is worse than either alone.
+ *
+ * Ranked against deaths-per-attempt from a real session of twenty patterns,
+ * this scores -0.651 where min(clearance, reach) scored -0.316.
+ *
+ * `tight` rather than median room, for the same reason and by the same test:
+ * you die at a pattern's pinch points, not in its typical conditions.
+ */
 function safety(m) {
-  const clearance = Math.max(0, m.room - m.drift);
-  const reach = m.react * PLAYER_SPEED * (1 - AIM_COST * m.aimed);
-  return Math.max(0, Math.min(clearance, reach));
+  const clearance = Math.max(1, m.tight - m.drift);
+  const reach = Math.max(1, m.react * PLAYER_SPEED * (1 - AIM_COST * m.aimed));
+  return Math.sqrt(clearance * reach);
 }
 
 async function measure(b, ph, d) {
@@ -320,26 +388,43 @@ async function measure(b, ph, d) {
   }
   const avg = (k) => runs.reduce((a, r) => a + (r[k] ?? 0), 0) / runs.length;
   return {
-    room: avg('room'), tight: avg('tight'),
-    drift: avg('drift'), react: avg('react'), aimed: avg('aimed'),
+    room: avg('room'), tight: avg('tight'), flux: avg('flux'),
+    drift: avg('drift'), react: avg('react'),
+    aimed: avg('aimed'), aimRate: avg('aimRate'),
   };
+}
+
+if (JSON_OUT) {
+  const out = [];
+  for (const b of bosses) {
+    const phases = ONLY_PHASE === null ? roster[b].phases.map((_, i) => i) : [ONLY_PHASE];
+    for (const ph of phases) {
+      const row = { boss: roster[b].name, phase: roster[b].phases[ph], axes: [] };
+      for (let d = 0; d < 5; d++) row.axes.push({ diff: DIFFN[d], ...(await measure(b, ph, d)) });
+      out.push(row);
+    }
+  }
+  console.log(JSON.stringify({ playerSpeed: PLAYER_SPEED, rows: out }, null, 2));
+  await browser.close();
+  server.kill();
+  process.exit(0);
 }
 
 console.log(`Difficulty sweep on space and predictability.`);
 console.log(`${(FRAMES / 60).toFixed(0)}s x ${STARTS} start(s) per cell, ` +
   `${HORIZON}-frame prediction horizon, player speed ${PLAYER_SPEED.toFixed(2)}px/f.`);
-console.log(`safety = min(room - drift, react x speed x (1 - ${AIM_COST} x aimed)), in px. ` +
+console.log(`safety = sqrt((tight - drift) x react x speed x (1 - ${AIM_COST} x aimed)), in px. ` +
   `Lower is harder.\n`);
 
 if (DETAIL) {
   const b = ONLY_BOSS === null ? 4 : ONLY_BOSS;
   const ph = ONLY_PHASE === null ? 0 : ONLY_PHASE;
   console.log(`${roster[b].name}  ${ph + 1}. ${roster[b].phases[ph]}\n`);
-  console.log('DIFFICULTY     room    tight    drift    react    aimed   clearance    reach   SAFETY');
-  console.log('-'.repeat(89));
+  console.log('DIFFICULTY     room    tight    drift    react    aimed  aim/sec     flux   clearance    reach   SAFETY');
+  console.log('-'.repeat(108));
   for (let d = 0; d < 5; d++) {
     const m = await measure(b, ph, d);
-    const clearance = Math.max(0, m.room - m.drift);
+    const clearance = Math.max(1, m.tight - m.drift);
     const reach = m.react * PLAYER_SPEED * (1 - AIM_COST * m.aimed);
     console.log(
       DIFFN[d].padEnd(12) +
@@ -348,6 +433,8 @@ if (DETAIL) {
       `${m.drift.toFixed(1)}px`.padStart(9) +
       `${m.react.toFixed(1)}f`.padStart(9) +
       `${(m.aimed * 100).toFixed(0)}%`.padStart(9) +
+      `${m.aimRate.toFixed(1)}/s`.padStart(9) +
+      `${m.flux.toFixed(1)}/s`.padStart(9) +
       `${clearance.toFixed(1)}px`.padStart(12) +
       `${reach.toFixed(1)}px`.padStart(9) +
       `${safety(m).toFixed(1)}px`.padStart(9));

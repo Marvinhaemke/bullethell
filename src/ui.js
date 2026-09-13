@@ -132,6 +132,7 @@ export class Menu {
     return false;
   }
 
+  /** Draws the menu and returns the y it ended at, so callers can lay out below it. */
   draw(g, x, y, opts = {}) {
     const lh = opts.lineHeight || 34;
     const w = opts.width || 420;

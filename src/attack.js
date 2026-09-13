@@ -42,6 +42,31 @@ export class Attack {
   // ---- difficulty scaling -----------------------------------------------
   /** Scale a bullet count by density. */
   n(base, min = 1) { return Math.max(min, Math.round(base * this.D.density)); }
+
+  /**
+   * A bullet count for a rank that fills a fixed span -- a wall, a curtain.
+   *
+   * Density is the wrong knob at full strength here. A ring gets bigger as it
+   * travels, so adding bullets to one costs the player a little room; a wall's
+   * span never changes, so every column added subtracts directly from the lane
+   * spacing, and once a lane is thinner than the ship the extra columns have
+   * stopped offering choices and only add flux. Loom ran 27 columns across a
+   * 672px playfield at Lunatic's 1.70 density -- 45% of the width solid, two
+   * misaligned ranks of it at once -- and the sweep read the second boss's
+   * OPENING pattern as the tightest cell in the game (0.46 of its column, 5.8px
+   * at the pinch points). Half the density step keeps the rank visibly denser
+   * tier over tier while leaving the gap width, the speed and the crossing
+   * weave to carry the difficulty.
+   *
+   * Damped upward only, on the same reasoning as `gap`: Normal is the reference
+   * tuning, so the tiers below it keep the counts they were designed with and
+   * only the ones above are pulled back.
+   */
+  nw(base, min = 1) {
+    const d = this.D.density;
+    return Math.max(min, Math.round(base * (d > 1 ? 1 + (d - 1) * 0.5 : d)));
+  }
+
   /** Scale a speed. */
   spd(v) { return v * this.D.speed; }
   /** Scale a wait, in frames. */
@@ -119,6 +144,13 @@ export class Attack {
 
     if (o.ax) b.ax = o.ax;
     if (o.ay) b.ay = o.ay;
+    // Speed limits apply to any bullet that gains speed, not only to `accel`
+    // ones: a gravity arc has a terminal velocity too. Nesting these inside
+    // the accel branch meant a pattern could write `ay` and `maxSpeed`
+    // together -- Ballistic Rain did -- and have the limit silently dropped at
+    // spawn, which is how its arcs came to reach 13.5px/frame.
+    if (o.maxSpeed !== undefined) b.maxSpeed = o.maxSpeed;
+    if (o.minSpeed !== undefined) b.minSpeed = o.minSpeed;
     if (o.accel) {
       b.accel = o.accel;
       b.minSpeed = o.minSpeed === undefined ? 0 : o.minSpeed;
@@ -226,8 +258,6 @@ export class Attack {
       const a1 = base + (s + 1) * TAU / sides;
       const x0 = cx + Math.cos(a0) * radius, y0 = cy + Math.sin(a0) * radius;
       const x1 = cx + Math.cos(a1) * radius, y1 = cy + Math.sin(a1) * radius;
-      // Outward normal of this edge.
-      const nrm = Math.atan2(y1 - y0, x1 - x0) - HALF_PI;
       for (let i = 0; i < per; i++) {
         const t = (i + 0.5) / per;
         const px = x0 + (x1 - x0) * t, py = y0 + (y1 - y0) * t;
@@ -236,7 +266,28 @@ export class Attack {
           if (d > PI) d -= TAU; else if (d < -PI) d += TAU;
           if (Math.abs(d) < gap) continue;
         }
-        this._apply(Object.assign({}, o, { x: px, y: py, angle: nrm }));
+        // Scaled outward from the centre, not pushed along the edge normal.
+        //
+        // A shared normal per edge translates the edge rigidly: it keeps the
+        // length it had at radius 26 forever, so what expands is not a polygon
+        // but a handful of short bars drifting apart. A triangle's edge is 45px
+        // at spawn and still 45px three hundred pixels out, where the shape it
+        // is meant to trace needs 565px -- the ring covered about six percent of
+        // its own perimeter by the time it reached the player, and adding
+        // bullets only packed them tighter into the same bars, which is why
+        // Polygon Cage measured looser the denser the difficulty made it.
+        //
+        // Moving each bullet along its own radius at a speed proportional to
+        // how far out it starts is a homothety: edges stay straight and grow in
+        // proportion, so the shape really does stay crisp, and `speed` now
+        // means the speed of the corners.
+        const dx = px - cx, dy = py - cy;
+        const dist = Math.hypot(dx, dy) || radius;
+        this._apply(Object.assign({}, o, {
+          x: px, y: py,
+          angle: Math.atan2(dy, dx),
+          speed: (o.speed === undefined ? 1 : o.speed) * (dist / radius),
+        }));
       }
     }
   }

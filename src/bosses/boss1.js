@@ -94,22 +94,33 @@ function* polygonCage(A) {
   let k = 0;
   while (true) {
     const sides = 3 + (k % 4);
+    // Aimed, and left aimed. Moving the notch off the player -- by a fixed
+    // angle or a random one -- makes this pattern measurably EASIER, not
+    // harder: an opening that does not follow you is an opening you can walk
+    // to and then stop, while one that tracks you keeps arriving as the ring
+    // around it closes. Two attempts at "scatter it more on the high tiers"
+    // both read looser than this line. The difficulty belongs in how narrow
+    // the notch is and how much is coming with it.
     const gapAt = A.aim();
 
     A.polyRing({
-      sides, perSide: A.n(7, 4), radius: 26,
+      sides, perSide: A.n(8, 5), radius: 26,
       speed: A.spd(1.55), angle: k * 0.31,
-      gapAt, gap: A.L(2) ? 0.34 : 0.5,
+      // Narrowed a step at a time rather than once, at Normal, from a half-open
+      // ring to a third of one. That single step was the whole ladder: the
+      // sweep had Novice and Easy at nearly twice their columns' room, then
+      // Normal tighter than Hard.
+      gapAt, gap: A.L(3) ? 0.26 : A.L(1) ? 0.30 : 0.34,
       shape: 'square', color: C.cyan, r: 5.5,
     });
-    if (A.L(2)) {
+    if (A.L(1)) {
       A.polyRing({
-        sides, perSide: A.n(5, 3), radius: 20,
+        sides, perSide: A.n(6, 4), radius: 20,
         speed: A.spd(2.5), angle: -k * 0.31,
         shape: 'diamond', color: C.blue, r: 5,
       });
     }
-    if (A.L(4)) {
+    if (A.L(3)) {
       A.polyRing({
         sides: sides + 1, perSide: A.n(4, 3), radius: 34,
         speed: A.spd(1.05), angle: k * 0.5,

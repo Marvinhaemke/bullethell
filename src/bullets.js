@@ -69,6 +69,7 @@ export class Bullet {
     // Linear acceleration (gravity / wind).
     this.ax = 0; this.ay = 0;
     // Acceleration along the direction of travel, clamped to [minSpeed,maxSpeed].
+    // maxSpeed doubles as terminal velocity for gravity (ax/ay) bullets.
     this.accel = 0; this.minSpeed = 0; this.maxSpeed = 24;
 
     // Constant-curvature steering, optionally decaying to a straight line.
@@ -223,7 +224,29 @@ export class BulletPool {
           }
         }
 
-        if (b.ax !== 0 || b.ay !== 0) { b.vx += b.ax; b.vy += b.ay; }
+        if (b.ax !== 0 || b.ay !== 0) {
+          b.vx += b.ax; b.vy += b.ay;
+          // Terminal velocity. maxSpeed used to be consulted only in the
+          // `accel` branch above, so a ballistic arc accelerated without any
+          // limit and the `maxSpeed` its pattern set next to the gravity was
+          // dead code. Orbiter's Ballistic Rain asked for 11 and reached 13.5
+          // at Lunatic; the run log found its killing bullets averaging
+          // 9.4px/frame where every other pattern in the game kills at 1.5-3.8.
+          // Capped along the direction of the acceleration only, not on the
+          // whole vector. Scaling both components also shortens how far an arc
+          // travels sideways, which pulled Ballistic Rain's lobs in from the
+          // edges and left a corner of the screen nothing could reach. Falling
+          // speed is what wanted limiting; horizontal reach is the pattern.
+          const gl = Math.hypot(b.ax, b.ay);
+          if (gl > 0) {
+            const gx = b.ax / gl, gy = b.ay / gl;
+            const along = b.vx * gx + b.vy * gy;
+            if (along > b.maxSpeed) {
+              const excess = along - b.maxSpeed;
+              b.vx -= gx * excess; b.vy -= gy * excess;
+            }
+          }
+        }
 
         b.x += b.vx;
         b.y += b.vy;
