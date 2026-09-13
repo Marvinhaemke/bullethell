@@ -21,6 +21,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import musicscan
+
 ROOT = Path(__file__).resolve().parent
 
 # Dependency order. Modules that are read at load time (palettes, boss tables)
@@ -61,9 +63,6 @@ DECL_RE = re.compile(
     r"^(?:export\s+)?(?:const|let|var|function\*?|class)\s+([A-Za-z_$][\w$]*)"
 )
 LEFTOVER_RE = re.compile(r"^\s*(?:import[\s{(]|export\s)", re.MULTILINE)
-
-# Kept in step with the same list in tools/music.mjs.
-AUDIO_SUFFIXES = {".mp3", ".ogg", ".m4a", ".wav", ".flac", ".opus", ".webm"}
 
 
 def collect(path: Path):
@@ -142,10 +141,11 @@ def main():
     )
     # Inline the music manifest and copy the tracks next to the bundle, so the
     # single file still finds them without a fetch (which file:// blocks).
-    manifest = ROOT / "music" / "tracks.json"
+    # Scanned rather than read, so a track added without running `npm run
+    # music` still reaches the bundle.
+    data = musicscan.scan(ROOT / "music")
     inline = ""
-    if manifest.exists():
-        data = json.loads(manifest.read_text())
+    if data["tracks"]:
         inline = (
             "<script>window.__BOSSRUSH_MUSIC = "
             + json.dumps(data, separators=(",", ":"))
@@ -173,7 +173,7 @@ def main():
         dst_music = dist / "music"
         dst_music.mkdir(exist_ok=True)
         for f in src_music.iterdir():
-            if f.is_file() and f.suffix.lower() in AUDIO_SUFFIXES:
+            if f.is_file() and f.suffix.lower() in musicscan.AUDIO_SUFFIXES:
                 shutil.copy2(f, dst_music / f.name)
                 tracks += 1
     kb = out.stat().st_size / 1024

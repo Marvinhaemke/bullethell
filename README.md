@@ -180,15 +180,17 @@ The game ships with none, and stays silent until you add some. To add tracks:
 
 ```bash
 cp ~/some-track.mp3 music/
-npm run music              # writes music/tracks.json
 ```
 
-That manifest is the whole mechanism. A browser cannot list a directory, so the
-generator writes down what is on disk and the game reads that. Re-run it after
-adding or removing files.
+That is the whole step. A browser cannot list a directory, so the game reads a
+manifest — but the manifest is **generated**, not maintained by hand: `serve.py`
+builds it per request, and `build.py` and the Vercel build write it at build
+time. Uploading a track through the GitHub web UI works as well as adding one
+locally, which an earlier version of this got wrong.
 
 By default every track joins one rotation that advances on each scene change.
-To pin one to a scene, add a `for` field to its entry:
+To pin one to a scene, run `npm run music` to write `music/tracks.json`, then
+add a `for` field to its entry:
 
 ```json
 {
@@ -204,8 +206,9 @@ Valid values are `menu`, `boss1` … `boss5` and `results`. A scene with nothing
 pinned to it falls back to the rotation, so pinning some tracks and not others
 works fine. `"loop": false` plays an entry once instead of looping.
 
-The generator **merges**: hand-added fields survive a re-run, and only new files
-are appended and vanished ones removed.
+Every generator **merges**: hand-added fields survive, and only new files are
+added and vanished ones dropped. `npm run music` is the only one that writes to
+the repository; the rest generate in memory or into their build output.
 
 Tracks stream from an `<audio>` element rather than decoding into WebAudio
 buffers — a decoded three-minute track is ~30MB of `Float32Array` and has to
@@ -315,13 +318,14 @@ src/
   player.js  lasers.js  particles.js  sprites.js
   ui.js  input.js  audio.js  storage.js  config.js  mathx.js  rng.js
   bosses/boss1..5.js
+musicscan.py        the music manifest scanner, shared by serve.py and build.py
 tools/
   smoke.mjs         headless play-through of every boss at every difficulty
   census.mjs        per-phase bullet-count and frame-cost report
   ships.mjs         per-ship clear time, dodging vs lined up
   audiokeys.mjs     sound levels, key bindings, the music drop-in path
   autopsy.mjs       what kills you on one phase, and how pressure builds
-  music.mjs         rebuild music/tracks.json from the files on disk
+  music.mjs         the music manifest scanner, and a CLI to write it out
   vercel-build.mjs  assemble public/ for a static deploy
   shots.mjs         screenshot every phase
   probe.mjs         damage throughput and phase pacing
@@ -339,7 +343,7 @@ npm run autopsy -- --boss 5 --phase 4   # why is this phase hard?
 npm run bot         # autopilot quality: survival, gap width, idle drift
 npm run ships       # is every ship worth picking?
 npm run audio       # sound levels, key bindings, music end to end
-npm run music       # rebuild music/tracks.json after adding tracks
+npm run music       # write music/tracks.json, for pinning tracks to scenes
 npm run census      # per-phase bullet counts and render cost
 npm run lint
 ```

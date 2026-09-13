@@ -158,9 +158,16 @@ check('legacy sound:true migrates to ON', migratedOn === 2);
 console.log('\nMusic');
 const music = await page.evaluate(async () => {
   const { game: g } = window.__BOSSRUSH;
-  const empty = { available: g.music.available, cue: g.music.cue };
 
-  // Feed it a manifest by hand: the real one is empty until someone adds files.
+  // An empty manifest must be silence, not an error -- that is the shipping
+  // state before anyone adds a track. Asserted against a manifest handed over
+  // here rather than against whatever happens to be in music/, so the check
+  // keeps testing the behaviour once the repo does carry tracks.
+  g.music.accept({ tracks: [] });
+  let threw = null;
+  try { g.music.play('menu'); } catch (e) { threw = e.message; }
+  const empty = { available: g.music.available, el: !!g.music.el, threw };
+
   g.music.accept({
     tracks: [
       { file: 'a.mp3', title: 'A', for: 'menu' },
@@ -183,7 +190,9 @@ const music = await page.evaluate(async () => {
 
   return { empty, picks, rotation };
 });
-check('an empty manifest is silence, not an error', !music.empty.available);
+check('an empty manifest is silence, not an error',
+  !music.empty.available && !music.empty.el && music.empty.threw === null,
+  music.empty.threw || '');
 check('a pinned track wins its cue', music.picks.menu === 'a.mp3' && music.picks.boss2 === 'b.mp3');
 check('an unpinned cue falls back to the rotation',
   music.picks.boss1 === 'c.mp3' || music.picks.boss1 === 'd.mp3');
@@ -228,6 +237,11 @@ try {
   check('the generator finds dropped files',
     temp.every((f) => listed.includes(basename(f))), listed.join(', '));
 
+  // The failure this guards against actually happened: tracks uploaded through
+  // the GitHub web UI left the checked-in manifest empty, and the game played
+  // nothing. Nothing may require a command to have been run.
+  writeFileSync(MANIFEST, JSON.stringify({ tracks: [] }) + '\n');
+
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction(() => !!window.__BOSSRUSH);
   await page.waitForFunction(() => window.__BOSSRUSH.game.music.available, { timeout: 5000 })
@@ -248,7 +262,7 @@ try {
       volume: Number(el.volume.toFixed(2)),
     };
   });
-  check('the game fetches the manifest and starts a track', live.loaded);
+  check('a stale manifest does not silence the music', live.loaded);
   check('a name with a space resolves', live.loaded && !live.decodeError,
     live.src ? decodeURIComponent(live.src.split('/music/')[1] || '') : '');
   check('playback advances', live.advancing === true);

@@ -9,9 +9,12 @@ ES modules cannot be loaded over file://, so serve the directory instead:
 
 import functools
 import http.server
+import json
 import socketserver
 import sys
 from pathlib import Path
+
+import musicscan
 
 ROOT = Path(__file__).resolve().parent
 
@@ -22,6 +25,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         ".js": "text/javascript",
         ".mjs": "text/javascript",
     }
+
+    def do_GET(self):
+        # Generated, never read off disk: dropping files into music/ should be
+        # the whole story, and the checked-in manifest goes stale the moment
+        # someone adds a track without running `npm run music`.
+        if self.path.split("?")[0] == "/music/tracks.json":
+            body = json.dumps(musicscan.scan(ROOT / "music")).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
 
     def end_headers(self):
         # Always serve fresh files while iterating on patterns.
