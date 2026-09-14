@@ -36,12 +36,20 @@ function* strangeAttractor(A) {
         shape: 'ring', color: C.rose, r: 5.4,
       });
     }
-    if (A.L(3) && k % 6 === 5) {
-      A.fan({
-        n: A.n(4, 2), spread: 0.4, speed: A.spd(4.6),
-        angle: A.aimLead(undefined, undefined, 4.6),
-        shape: 'kunai', color: C.white, r: 4.4,
-      });
+    if (A.L(3) && k % 3 === 2) {
+      // A faster run of the logistic map on the off-beat, rather than the aimed
+      // kunai fan this used to throw every sixth cycle. The phase is the map;
+      // the answer to wanting more from it is more of the map, at a speed that
+      // reads as a different voice, not a spear thrown at where you stand.
+      const m = A.n(4, 2);
+      for (let i = 0; i < m; i++) {
+        x = logistic(x, 3.94);
+        A.one({
+          angle: -base * 1.3 + x * TAU,
+          speed: A.spd(3.0 + x * 1.2),
+          shape: 'kunai', color: C.white, r: 4.4, life: 400,
+        });
+      }
     }
     if (A.L(4) && k % 11 === 10) {
       // Chaotic seeds that split -- noise with recursive structure.
@@ -142,18 +150,46 @@ function* convergence(A) {
   // is the thing you actually die to. A.gap() is A.w() corrected for that.
   const wave = A.gap(52);
 
+  // No bullet in this phase may simply appear on top of the player.
+  //
+  // borderPoint walks the whole perimeter, and a player spends most of a fight
+  // near the bottom edge, so a wave could put a kunai on the border directly
+  // beneath them with no travel at all. Measured: three frames between a
+  // Convergence bullet existing and being close enough to have to be dodged,
+  // against a 150-to-300 frame norm for every other pattern in the game. That
+  // is not a hard pattern, it is an unfair one, and it is exactly what a player
+  // described as "fast bullets that come from the bottom and the sides, much
+  // closer than the boss". Slide the spawn along the perimeter until the bullet
+  // has far enough to travel to be seen coming.
+  const CLEAR = 210;
+  const spawnAt = (u0) => {
+    let u = u0 % 1;
+    let p = A.borderPoint(u);
+    for (let t = 0; t < 8 && Math.hypot(p.x - A.px, p.y - A.py) < CLEAR; t++) {
+      u = (u + 0.125) % 1;
+      p = A.borderPoint(u);
+    }
+    return p;
+  };
+
   while (true) {
     const n = A.n(8, 4);
     for (let i = 0; i < n; i++) {
       const u = (i + 0.5) / n + k * 0.071;
-      const p = A.borderPoint(u);
+      const p = spawnAt(u);
       // Below Hard, only half the ring tracks you; the rest converges on the
       // centre. At 92% aimed this was the most aggressively targeted pattern
       // in the game, and because every wave re-aims, no spot stays safe for
       // long -- which is what makes it read as random rather than as a shape
       // to solve. The unaimed half gives the wave a structure that holds still
       // long enough to be read.
-      const tracks = A.L(3) || i % 2 === 0;
+      // Half the wave tracks you until Lunatic, not until Hard. Once reading
+      // time was measured, this phase came out as the tightest column in the
+      // game from Normal up even after the spawns were moved off the player --
+      // it is still a wave that re-aims from the border every time, which is
+      // the definition of a shape that will not hold still long enough to be
+      // read. Full tracking is now the top tier's alone.
+      const tracks = A.L(4) || i % 2 === 0;
       A.one({
         x: p.x, y: p.y,
         angle: tracks ? A.aim(p.x, p.y) : Math.atan2(PLAY.cy - p.y, PLAY.cx - p.x),
@@ -173,11 +209,11 @@ function* convergence(A) {
         turn: 0.018, turnDecay: 0.994,
       });
     }
-    if (A.L(4) && k % 3 === 2) {
+    if (A.L(4) && k % 4 === 3) {
       // A wall of frozen bullets that unfreezes aimed at you.
       for (let i = 0; i < A.n(12, 8); i++) {
         const u = i / A.n(12, 8);
-        const p = A.borderPoint(u * 0.5);
+        const p = spawnAt(u * 0.5);
         A.one({
           x: p.x, y: p.y, angle: HALF_PI, speed: A.spd(2.0),
           stopT: 40, goT: 74, goMode: 'aim', goSpeed: A.spd(3.6),
@@ -198,8 +234,13 @@ function* finalTheorem(A) {
   let i = 0;
   let cells = caSeed(37, 'center');
   let x = 0.6137;
-  const ringEvery = A.w(15);
-  const fanEvery = A.w(52);
+  // A.gap rather than A.w for both, on the same reasoning as the beams below:
+  // these are the fast layers, and what survives on screen between events is
+  // what the easier tiers actually meet. Easy read as the tightest cell in its
+  // column here, and thinning the slow phyllotaxis stream instead made it
+  // WORSE -- what was left when the stream thinned was these two.
+  const ringEvery = A.gap(15);
+  const fanEvery = A.gap(52);
   // A.gap() rather than A.w(): rule 30 fires a fixed 37-cell automaton, so the
   // bullets per event never scaled with difficulty either, and the population
   // on screen came out almost flat from Novice to Lunatic.
@@ -276,12 +317,18 @@ function* finalTheorem(A) {
       });
     }
 
-    // Aimed curving fans.
+    // Curving fans.
     if (i % fanEvery === 0) {
       const sgn = (i / fanEvery) % 2 ? 1 : -1;
+      // Curving, and no longer aimed. This is the mildest of the aimed volleys
+      // -- wide, slow by their standards, and it visibly bends -- so the curve
+      // is worth keeping where the others were not. What goes is the tracking:
+      // launched across the field instead, the arcs are still the thing you
+      // route around, without the phase asking you to answer where you happen
+      // to be standing at one particular frame.
       A.fan({
-        n: A.n(5, 3), spread: 0.8,
-        angle: A.aimLead(undefined, undefined, 3.0), speed: A.spd(3.0),
+        n: A.n(6, 4), spread: 1.35,
+        angle: i * 0.017 + sgn * 0.9, speed: A.spd(3.0),
         turn: sgn * 0.018, turnDecay: 0.992,
         shape: 'rice', color: C.white, r: 4.4,
       });

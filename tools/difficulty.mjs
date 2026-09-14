@@ -132,6 +132,7 @@ const STARTS = num('--starts', 2);
 // since a person reads a curve as a line and is wrong by exactly this much.
 const HORIZON = num('--horizon', 26);
 const AIM_COST = num('--aim-cost', 0.5);
+const WARN_REF = num('--warn-ref', 160);
 // A phase this far below its column's typical safety is out of line with the
 // rest of the game at that difficulty, whatever the absolute pixels say.
 const OUTLIER = num('--outlier', 0.75);
@@ -225,6 +226,44 @@ await page.evaluate(() => {
     let entered = 0;
     let wasNear = new Set();
 
+    // Reading time: frames between a bullet existing and it being a threat.
+    //
+    // Every other axis here looks at bullets already in flight, which quietly
+    // assumes they all arrived with the same amount of notice. They do not. A
+    // ring leaving the boss crosses most of the playfield before it matters --
+    // a hundred frames to look at it and pick a lane. Convergence spawns on the
+    // border, including the bottom and the sides the player is already sitting
+    // against, and Reflection's ricochets return off the near walls; those
+    // arrive with a fraction of the notice at the same speed, which is exactly
+    // the difference a player describes as "fast bullets that come from close
+    // by" rather than as density.
+    //
+    // Measured off the real trajectory, not a straight-line reading at launch:
+    // a bullet's age the first frame it comes within GUARD of the player. A
+    // straight-line test at spawn was tried first and measures the wrong
+    // population -- it can only see bullets already pointed at you, so gravity
+    // arcs, ricochets, curves and stop-and-snap rings contribute nothing at all
+    // and the axis collapses into a second reading of `aimed`. Ballistic Rain,
+    // whose every bullet is a lob fired upward, scored on a handful of
+    // stragglers. Age at first contact needs no extrapolation and no special
+    // case: whatever the bullet did to get there, this is how long the player
+    // had to watch it do it.
+    // Only bullets that were outside GUARD when they first appeared count. The
+    // player can walk into an emitter, and on the sparse low tiers the bot
+    // does: with nothing to dodge it drifts wherever it likes, including under
+    // the boss, and a ring spawning around it there is contact at age zero. It
+    // is not an ambush if you went to meet it, and there is no way to tell the
+    // two apart after the fact -- so bullets born already close are left out of
+    // the sample rather than scored. Nothing real is lost: a pattern that puts
+    // bullets on the player wherever the player is puts them a long way from
+    // its own emitter, so they are born far and score their travel honestly.
+    const GUARD = 60;           // px; the radius a dodge has to be started for
+    const warns = [];
+    const seen = new Set();     // every bullet, from its first frame
+    const bornFar = new Set();  // ... of which these started outside GUARD
+    const warned = new Set();   // bullets whose arrival has been scored
+    const measured = new Set(); // bullets whose launch has been scored
+
     // Ring of snapshots: each entry is a Map(id -> [x, y, vx, vy]) of the
     // bullets that were near the player on that frame.
     const ring = new Array(horizon).fill(null);
@@ -253,12 +292,26 @@ await page.evaluate(() => {
         // Checked before the proximity gate below, because aimed fire is
         // launched from the boss -- a screen away -- and gating it on being
         // near the player measured essentially nothing.
-        if (b.age <= 1) {
+        // Scored once per bullet: `age <= 1` is true on two consecutive frames
+        // depending on where in the update the pattern spawned it, which used
+        // to double every launch count here.
+        if (b.age <= 1 && !measured.has(b.__id)) {
+          measured.add(b.__id);
           const sp = Math.hypot(b.vx, b.vy);
           if (sp > 0.01 && dist > 1) {
             aimedSeen++;
             if ((b.vx * -dx + b.vy * -dy) / (sp * dist) >= AIM_TOL) aimedHits++;
           }
+        }
+
+        // Reading time: how old this bullet was the first time it got close
+        // enough to have to be dodged.
+        if (!seen.has(b.__id)) {
+          seen.add(b.__id);
+          if (dist > GUARD + b.hr) bornFar.add(b.__id);
+        } else if (dist <= GUARD + b.hr && bornFar.has(b.__id) && !warned.has(b.__id)) {
+          warned.add(b.__id);
+          warns.push(b.age);
         }
 
         if (dist > NEAR) continue;
@@ -319,6 +372,10 @@ await page.evaluate(() => {
       flux: (entered * 60) / frames,
       drift: p90(drifts),
       react: median(reacts),
+      // 999 is the no-data sentinel: nothing came within the guard radius in
+      // the whole window, which is the safest a phase can be and not, as an
+      // empty-sample zero would have said, the most dangerous.
+      warn: warns.length ? p10(warns) : 999,
       aimed: aimedSeen ? aimedHits / aimedSeen : 0,
       aimRate: (aimedHits * 60) / frames,
       samples: { rooms: rooms.length, drifts: drifts.length, reacts: reacts.length },
@@ -374,8 +431,30 @@ const bosses = ONLY_BOSS === null ? [0, 1, 2, 3, 4] : [ONLY_BOSS];
  */
 function safety(m) {
   const clearance = Math.max(1, m.tight - m.drift);
-  const reach = Math.max(1, m.react * PLAYER_SPEED * (1 - AIM_COST * m.aimed));
+  const reach = Math.max(1, m.react * PLAYER_SPEED * (1 - AIM_COST * m.aimed) * readable(m));
   return Math.sqrt(clearance * reach);
+}
+
+/**
+ * How much of the movement budget a player actually gets to use, given how
+ * much notice the pattern gives. 1.0 once there is time to read the field.
+ *
+ * Same structural place as the aim cost, and for the same reason: reach is the
+ * distance you can cover before contact, and distance you did not know to start
+ * covering is not yours. A pattern that puts its bullets on the border a
+ * playfield away gives well over two seconds to pick a lane; one that puts them
+ * on the bottom edge the player is already sitting against gives Convergence's
+ * 24 frames at Normal, against a 140-frame norm.
+ *
+ * WARN_REF is where more notice stops helping -- past about two and a half
+ * seconds the field has been read and the extra time buys nothing. Against the
+ * run log this form scores -0.672 where leaving reading time out scored -0.468
+ * on the same axes, and it is the only candidate tried that also reproduces the
+ * player's own ranking of Convergence and Reflection as the two hardest
+ * patterns on Normal.
+ */
+function readable(m) {
+  return Math.min(1, m.warn / WARN_REF);
 }
 
 async function measure(b, ph, d) {
@@ -389,7 +468,7 @@ async function measure(b, ph, d) {
   const avg = (k) => runs.reduce((a, r) => a + (r[k] ?? 0), 0) / runs.length;
   return {
     room: avg('room'), tight: avg('tight'), flux: avg('flux'),
-    drift: avg('drift'), react: avg('react'),
+    drift: avg('drift'), react: avg('react'), warn: avg('warn'),
     aimed: avg('aimed'), aimRate: avg('aimRate'),
   };
 }
@@ -413,25 +492,26 @@ if (JSON_OUT) {
 console.log(`Difficulty sweep on space and predictability.`);
 console.log(`${(FRAMES / 60).toFixed(0)}s x ${STARTS} start(s) per cell, ` +
   `${HORIZON}-frame prediction horizon, player speed ${PLAYER_SPEED.toFixed(2)}px/f.`);
-console.log(`safety = sqrt((tight - drift) x react x speed x (1 - ${AIM_COST} x aimed)), in px. ` +
-  `Lower is harder.\n`);
+console.log(`safety = sqrt((tight - drift) x react x speed x (1 - ${AIM_COST} x aimed) ` +
+  `x min(1, warn/${WARN_REF})), in px. Lower is harder.\n`);
 
 if (DETAIL) {
   const b = ONLY_BOSS === null ? 4 : ONLY_BOSS;
   const ph = ONLY_PHASE === null ? 0 : ONLY_PHASE;
   console.log(`${roster[b].name}  ${ph + 1}. ${roster[b].phases[ph]}\n`);
-  console.log('DIFFICULTY     room    tight    drift    react    aimed  aim/sec     flux   clearance    reach   SAFETY');
-  console.log('-'.repeat(108));
+  console.log('DIFFICULTY     room    tight    drift    react     warn    aimed  aim/sec     flux   clearance    reach   SAFETY');
+  console.log('-'.repeat(117));
   for (let d = 0; d < 5; d++) {
     const m = await measure(b, ph, d);
     const clearance = Math.max(1, m.tight - m.drift);
-    const reach = m.react * PLAYER_SPEED * (1 - AIM_COST * m.aimed);
+    const reach = m.react * PLAYER_SPEED * (1 - AIM_COST * m.aimed) * readable(m);
     console.log(
       DIFFN[d].padEnd(12) +
       `${m.room.toFixed(1)}px`.padStart(9) +
       `${m.tight.toFixed(1)}px`.padStart(9) +
       `${m.drift.toFixed(1)}px`.padStart(9) +
       `${m.react.toFixed(1)}f`.padStart(9) +
+      `${m.warn.toFixed(0)}f`.padStart(9) +
       `${(m.aimed * 100).toFixed(0)}%`.padStart(9) +
       `${m.aimRate.toFixed(1)}/s`.padStart(9) +
       `${m.flux.toFixed(1)}/s`.padStart(9) +
@@ -441,8 +521,8 @@ if (DETAIL) {
   }
 } else {
   console.log('BOSS          PHASE                       ' +
-    DIFFN.map((n) => n.slice(0, 4).padStart(9)).join('') + '   drift  aimed');
-  console.log('-'.repeat(44 + 9 * 5 + 15));
+    DIFFN.map((n) => n.slice(0, 4).padStart(9)).join('') + '   drift  aimed   warn');
+  console.log('-'.repeat(44 + 9 * 5 + 22));
 
   const rows = [];
   for (const b of bosses) {
@@ -450,12 +530,13 @@ if (DETAIL) {
       ? roster[b].phases.map((_, i) => i) : [ONLY_PHASE];
     for (const ph of phases) {
       const cells = [];
-      let driftSum = 0, aimSum = 0;
+      let driftSum = 0, aimSum = 0, warnSum = 0;
       for (let d = 0; d < 5; d++) {
         const m = await measure(b, ph, d);
         cells.push(safety(m));
         driftSum += m.drift;
         aimSum += m.aimed;
+        warnSum += m.warn;
       }
       rows.push({
         boss: roster[b].name,
@@ -468,7 +549,8 @@ if (DETAIL) {
         `${ph + 1}. ${roster[b].phases[ph]}`.padEnd(28) +
         cells.map((v) => `${v.toFixed(1)}`.padStart(9)).join('') +
         `${(driftSum / 5).toFixed(1)}px`.padStart(9) +
-        `${(aimSum / 5 * 100).toFixed(0)}%`.padStart(7));
+        `${(aimSum / 5 * 100).toFixed(0)}%`.padStart(7) +
+        `${(warnSum / 5).toFixed(0)}f`.padStart(7));
     }
   }
 

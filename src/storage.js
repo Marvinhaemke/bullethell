@@ -39,9 +39,10 @@ export function loadSettings() {
   return {
     diff: Number.isInteger(s.diff) ? s.diff : 2,
     life: Number.isInteger(s.life) ? s.life : 1,
-    // Upper bound is left to shipAt(), so this module stays free of any
-    // dependency on the roster.
-    ship: Number.isInteger(s.ship) && s.ship >= 0 ? s.ship : 0,
+    // Tracer (index 1) is the default. Upper bound is left to shipAt(), so this
+    // module stays free of any dependency on the roster -- which is also why
+    // the default is a bare index rather than a lookup by id.
+    ship: Number.isInteger(s.ship) && s.ship >= 0 ? s.ship : 1,
     sound: soundLevel(s.sound),
     music: clamp01(music),
     // Autofire on by default: there is never a reason to withhold fire here,

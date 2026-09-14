@@ -35,11 +35,22 @@ function* ballisticRain(A) {
     }
 
     if (A.L(1)) {
-      // A flatter, faster salvo that arrives before the lobs land.
-      A.fan({
-        n: A.n(3, 2), spread: 0.26, speed: A.spd(3.5),
-        angle: A.aim(), shape: 'rice', color: C.orange, r: 4.4,
-      });
+      // A flatter, faster salvo that arrives before the lobs land -- swept
+      // across the field rather than aimed at the player. The role is worth
+      // keeping: the lobs are slow and high, so something has to cross the
+      // ground under them. What it must not be is a narrow fan thrown at where
+      // you are standing, which turns a ballistics puzzle into a flinch.
+      const m = A.n(5, 3);
+      for (let i = 0; i < m; i++) {
+        const t = m === 1 ? 0.5 : i / (m - 1);
+        A.one({
+          // Downward, unlike the lobs above it: those are fired up the screen
+          // and brought back by gravity, and this salvo's whole job is to be
+          // the thing crossing the ground while they are still in the air.
+          angle: HALF_PI + (t - 0.5) * 2.2 + swing * 0.6,
+          speed: A.spd(3.4), shape: 'rice', color: C.orange, r: 4.4,
+        });
+      }
     }
     if (A.L(3)) {
       // Mortars that arc in from off the top of the screen.

@@ -130,14 +130,16 @@ function* phyllotaxis(A) {
           speed: A.spd(1.8), shape: 'diamond', r: 4.6, color: C.blue, life: 450,
         });
       }
-    }
-
-    if (A.L(3) && i % 23 === 0) {
-      A.fan({
-        n: A.n(3, 2), spread: 0.32, speed: A.spd(4.5),
-        angle: A.aimLead(undefined, undefined, 4.5),
-        shape: 'kunai', color: C.white, r: 4.4,
-      });
+      if (A.L(3)) {
+        // A third arm ring on the same beat, rather than the fast aimed kunai
+        // this used to fire every twenty-third tick. Eight arms sweeping over
+        // an even curtain is the whole phase; a third set of them, precessing
+        // the other way again and faster, is more of the thing worth reading.
+        A.ring({
+          n: ARMS, angle: A.t * 0.0171 + 0.4,
+          speed: A.spd(3.05), shape: 'kunai', color: C.white, r: 4.4, life: 430,
+        });
+      }
     }
     if (A.L(4) && i % 61 === 0) {
       A.gapRing({ n: A.n(26, 16), speed: A.spd(2.2), gap: 0.45, shape: 'ring', color: C.ice, r: 5.4 });
@@ -165,7 +167,7 @@ function* roseCurve(A) {
     // Normal, the one inversion left on the Fractal. Split the two: the trace
     // keeps its couple of seconds and the tiers above Normal buy extra samples
     // per frame instead of extra frames.
-    const per = A.L(3) ? 2 : 1;
+    const per = A.L(4) ? 3 : A.L(3) ? 2 : 1;
     const steps = Math.min(132, A.n(112, 56)) * per;
     const amp = 128;
     const dir = cyc % 2 ? -1 : 1;
@@ -189,23 +191,29 @@ function* roseCurve(A) {
     }
 
     A.sfx('burst', 120);
-    if (A.L(1)) {
-      A.fan({
-        n: A.n(5, 3), spread: 0.6, speed: A.spd(3.8),
-        angle: A.aim(), shape: 'kunai', color: C.white, r: 4.4,
-      });
-    }
-    if (A.L(3)) {
-      // A second volley a beat later, re-aimed. Nothing structural used to
-      // arrive between Normal and Hard on this phase -- the two petal
-      // companions gate at Normal and Lunatic -- which left the step to speed
-      // alone, and a faster rose unfolds sooner and is therefore thinner where
-      // it matters.
-      yield A.w(10);
-      A.fan({
-        n: A.n(5, 3), spread: 0.45, speed: A.spd(4.2),
-        angle: A.aimLead(undefined, undefined, 4.2), shape: 'kunai', color: C.ice, r: 4.4,
-      });
+    // The rose closes by firing back down its own petal tips instead of
+    // throwing two aimed kunai fans at the player.
+    //
+    // The petals are already drawn and already on screen, so a volley launched
+    // from their ends is a shape the player has been watching form for two
+    // seconds -- the opposite of the aimed fan it replaces, which arrived from
+    // the boss at 3.8 and 4.2px/frame with nothing to read. Nothing structural
+    // used to arrive between Normal and Hard here either, so the second pass at
+    // L(3) keeps that job.
+    const passes = A.L(3) ? 2 : A.L(1) ? 1 : 0;
+    for (let pass = 0; pass < passes; pass++) {
+      const m = A.n(petals * 3, petals);
+      for (let i = 0; i < m; i++) {
+        const th = dir * (i + pass * 0.5) * TAU / m;
+        const rr = amp * rose(th, petals);
+        const out = th + (rr < 0 ? PI : 0);
+        A.one({
+          x: A.bx + Math.cos(th) * rr, y: A.by + Math.sin(th) * rr,
+          angle: out, speed: A.spd(pass ? 3.0 : 2.6),
+          shape: 'kunai', color: pass ? C.ice : C.white, r: 4.4, life: 420,
+        });
+      }
+      if (pass === 0 && passes > 1) yield A.w(10);
     }
     cyc++;
     yield A.w(38);
@@ -253,8 +261,9 @@ function* delayedTheorem(A) {
       // Delayed Theorem as the loosest thing on the Fractal at Hard. A second,
       // half-offset snap ring answers that: it freezes on the same beat as the
       // first and relaunches a moment later, so the pause you spend reading the
-      // first one is not free.
-      const m = A.n(20, 12);
+      // first one is not free. Sized up once when a first pass at half this
+      // count measured flat.
+      const m = A.n(34, 20);
       for (let i = 0; i < m; i++) {
         A.one({
           angle: (i + 0.5) * TAU / m - k * 0.33,
