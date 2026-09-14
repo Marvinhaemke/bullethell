@@ -73,6 +73,28 @@
 //           or it is noise, and a term that sounds right is not a reason to
 //           keep one the data does not support. It stays because it is cheap
 //           and it is the axis to look at first when a phase reads as chaotic.
+//   lanes   how many distinct directions have a viable route out to 200px.
+//   laneW   the narrowest squeeze on the best of those routes, in px.
+//   laneLife how long a way out keeps existing, in frames.
+//
+//           These three describe the SHAPE of the free space, which no other
+//           axis here can see: every one of the others is a scalar at a point.
+//           Bullets scattered evenly and bullets packed into walls with a
+//           corridor between them report the same room, the same flux and the
+//           same react, and play nothing alike.
+//
+//           They do not predict deaths, and that is a finding rather than a
+//           disappointment -- see LANES, BELOW.
+//
+//   stroom  px of clearance a player could have HELD THROUGHOUT a 48-frame
+//           window, at best: a max-min dynamic program over (x, y, t), run
+//           forward on what the bullets really did. Capped at 24px, because
+//           this is a FLOOR CHECK -- whether the pattern leaves anywhere to be
+//           -- and not a ranking.
+//   stfloor the same over the phase's worst window rather than its typical one.
+//
+//           Every other axis here, lanes included, reads ONE FRAME, and that
+//           misses a whole class of pattern. See SPACE AND TIME, below.
 //
 // COMBINING THEM
 //
@@ -104,6 +126,121 @@
 // Lower safety = harder. The number is in pixels and is meant to be compared
 // between phases and down a difficulty column, not read as an absolute.
 //
+// LANES, AND A HYPOTHESIS THAT DID NOT SURVIVE
+//
+// A player proposed that the missing axis was lane forming: a route you are
+// pushed into or choose, not too dense, hard to leave, where "the screen can be
+// full of bullets but the lane is still open enough for a human to dodge". The
+// prediction was that the phases built that way would be the ones that kill
+// least. It was tested twice and it is false both times.
+//
+// The first attempt cast rays from a sample point and looked for deep clear
+// arcs. That measured EMPTINESS, not corridors -- a corridor that bends is
+// invisible to a straight ray, and a lane that did not bend would not need
+// choosing. Its three axes scored 0.00, 0.03 and -0.15 against the log.
+//
+// The second attempt is the one in the code: rasterise the free space, stamp a
+// clearance field, and run a max-min search for the widest bottleneck on any
+// route out. That is a correct measurement of corridor structure -- it agrees
+// with the eye, giving Rose Curve two routes through a 9px squeeze and
+// Convergence six through a 29px one. It also does not predict deaths: lanes
+// +0.21, laneW +0.12, laneLife -0.10, with the two strongest pointing the WRONG
+// WAY. More routes and wider bottlenecks go with more deaths, not fewer.
+//
+// The reason is visible once the numbers are in front of you. Lane quality is
+// close to a measure of how open the field is, and in this game the lethal
+// phases are the sparse fast ones, not the dense ones. Convergence -- six
+// deaths an attempt, the worst in the game -- has the best lane structure of
+// any phase, because it kills with speed across an empty screen.
+//
+// WHAT THE LANES DO TRACK IS TASTE, which is what the player was actually
+// describing. Sort the phases by what they said they liked:
+//
+//   praised   Phyllotaxis 1 route / 6.8px, Rose Curve 2 / 9.0, Delayed 4 / 20.6
+//   disliked  Convergence 6 / 29.4, Lissajous 5 / 10.9, Curveshot 5 / 12.5
+//
+// Few, tight routes is the maze feeling they called satisfying. Many wide ones
+// is an open field, which they did not. So these axes belong in the toolkit as
+// a design-intent readout -- what KIND of phase did I just build -- and not in
+// the difficulty number. Deaths are governed by something else entirely.
+//
+// WHAT THAT SOMETHING ELSE IS, on the evidence of three logs: `drift` is the
+// only axis whose sign is right on all three (-0.264, -0.339, -0.122). `aimed`
+// is much stronger on the two Hard logs (-0.466, -0.347) and inverts on Normal,
+// so it is not stable enough to reweight on -- every AIM_COST from 0.5 to 2.0
+// was tried and none wins across all three. Both of those are the same thing
+// said twice: a bullet that does something after launch you did not read. Which
+// is exactly what the README's design principle already says to avoid.
+//
+// SPACE AND TIME
+//
+// The lane measure above, and every other axis here, reads a single frame. That
+// is a blind spot with a shape, and the shape has a name: a curtain. Rows of
+// bullets sweeping down the screen with a gap that slides sideways from row to
+// row. Freeze any frame and the rows are a grid whose gaps do not line up
+// vertically, so the only way through is a squeeze between two rows -- and that
+// is what the lane measure reports for Weaver's Curtain: 3.8px of bottleneck at
+// Novice falling to 0.0 at Lunatic, tighter than anything else in the game.
+//
+// Played, nobody goes through the rows. You ride the gap: stand still, let a
+// row pass, slide sideways into the next gap as it arrives. A lane-follower
+// written to check this clears the phase for fifty seconds at every tier
+// including Lunatic. The room is real, there is plenty of it, and none of it
+// exists on any single frame -- it exists in the sequence.
+//
+// So `stroom` asks over (x, y, t) instead: what is the largest clearance a
+// player could HOLD THROUGHOUT the next 48 frames? A max-min dynamic program,
+// one cell of movement per step. On the Curtain it answers 24 / 24 / 22.5 /
+// 22.3 / 21.1px down the tiers, against the snapshot's 3.8 / 2.9 / 0.9 / 1.0 /
+// 0.0 -- and 24 is the cap, so the top two are "at least that".
+//
+// THE PLAYER HAS TO BE PERSISTENT, and that took a wrong answer to learn. The
+// first version restarted the search from a fixed sample point every window --
+// the same fixed-point discipline the lane axes use, adopted for the same good
+// reason -- and it scored the Curtain WORSE than the snapshot did: 4px at every
+// tier. It was right to. A player parachuted onto a sample point has to cross
+// the rows to reach the lane, and would have to do it again every window,
+// forever. Riding a lane is a commitment, and the room is only there for
+// someone already in it. So the frontier carries over: every cell a not-yet-hit
+// trajectory can reach stays alive across window boundaries, and only the value
+// resets, so each window reports the room that window afforded.
+//
+// It is seeded with the whole playfield, which is the right reading of the
+// question -- is there anywhere to be -- and means it needs no sample point and
+// so cannot leak one. And it needs no lookahead buffer: a max-min program
+// running forward in time only reads clearance up to the step it is on, so the
+// field is stamped frame by frame as the game produces it and the answer falls
+// out online, with every real curve, bounce and split in it.
+//
+// WHAT IT SAYS. Across all twenty-one phases at all five tiers, stroom sits at
+// its 24px cap in every cell but three, and those three are the Curtain at
+// 22.5 / 22.3 / 21.1. Read plainly: NOTHING IN THIS GAME DENIES A PLAYER ROOM,
+// and
+// the one pattern that comes closest is the one the snapshot called impossible. That is a floor check passing, which is what it is for -- it will
+// fire if a pattern is ever built with genuinely nowhere to be, and until then
+// it should report nothing, like `npm run deadzones`.
+//
+// WHAT WAS TRIED AND DROPPED: A READER. stroom is prescient -- the trajectory is
+// chosen in hindsight -- so a second player was built to be the honest half: at
+// each window it extrapolated the bullets it could see along straight lines,
+// solved the same program on that imagined field, and flew the plan through
+// what really happened. It is not in the code any more, because its trace shows
+// it measuring itself rather than the pattern. On the Curtain at Hard it walks
+// out of the lane during the phase's opening seconds -- while the screen is
+// still filling from the top and every direction reads as safe -- and ends up
+// in the bottom-left corner, where the lane is eighteen cells away and its
+// horizon is sixteen. Every plan from there scores an identical 1.4px, so the
+// max-min objective is flat, so it never moves again: 1.4px for the remaining
+// nineteen windows, against the 22px the pattern actually affords. Replanning
+// more often makes it worse, not better, because each fresh plan ratchets it
+// further from the lane.
+//
+// A better model is a real problem, not a parameter: it needs the thing a
+// player has and this does not, which is knowledge of where the pattern PUTS
+// bullets rather than only where they are. `drift` already measures the
+// read-failure dimension at the frame level and measures it without an agent,
+// so nothing was lost by dropping this.
+//
 // WHAT IT DOES NOT SEE
 //
 // Beams. Every axis here is computed from the bullet pool, so a phase can be
@@ -132,6 +269,11 @@ const STARTS = num('--starts', 2);
 // since a person reads a curve as a line and is wrong by exactly this much.
 const HORIZON = num('--horizon', 26);
 const AIM_COST = num('--aim-cost', 0.5);
+// Below this much space-time room, a pattern is not hard, it is a wall: even a
+// player who knew exactly what every bullet would do could not hold this much
+// clearance for a window. Well under a ship width, so it flags only a pattern
+// with genuinely nowhere to be.
+const ST_FLOOR = num('--st-floor', 12);
 const WARN_REF = num('--warn-ref', 160);
 // A phase this far below its column's typical safety is out of line with the
 // rest of the game at that difficulty, whatever the absolute pixels say.
@@ -201,7 +343,147 @@ await page.evaluate(() => {
   const NEAR = 190;
   const AIM_TOL = Math.cos(8 * Math.PI / 180);
 
-  window.__DIFF = function measure(bi, phi, di, frames, horizon, seed) {
+  // ---- lanes -------------------------------------------------------------
+  //
+  // Every other axis here is a SCALAR AT A POINT -- clearance to the nearest
+  // bullet, time until the most urgent one arrives, how long it existed first.
+  // None of them can see the shape of the free space, and the shape is what a
+  // player is actually reading. Bullets scattered evenly and bullets packed
+  // into walls with a corridor winding between them can report the same `room`,
+  // the same `flux` and the same `react`, and play nothing alike: in one every
+  // direction is equally bad, in the other there is a route, and following it
+  // is the whole pleasure. That difference is a phase feeling dense-but-fair
+  // rather than dense-and-random, and it is the standing explanation for why
+  // this tool keeps flagging Loom and Maelstrom that the player clears without
+  // dying. The room really is tight. The way through is a corridor.
+  //
+  // Measured as CONNECTIVITY, not as sight-lines. Ray-casting was tried first
+  // and is recorded here because it is the obvious cheap proxy and it does not
+  // work: a corridor that bends is invisible to a straight ray, and a lane that
+  // did not bend would not need choosing. What that version actually measured
+  // was emptiness, so it ranked Convergence -- a sparse phase that kills with
+  // speed, six deaths an attempt -- as the roomiest lanes in the game, and Rose
+  // Curve -- a thousand bullets on screen and no deaths at all -- as the
+  // narrowest. Against the log its three axes scored 0.00, 0.03 and -0.15.
+  //
+  // So: rasterise the free space, then ask for the WIDEST BOTTLENECK on any
+  // route out. Stamp each bullet into a clearance grid, then run a max-min
+  // search (Dijkstra on "maximise the narrowest cell you pass through") from
+  // the sample point outwards. The answer is the width of the tightest squeeze
+  // on the best route available -- which is exactly the thing a player means by
+  // a lane being open enough, and it is orthogonal to how full the screen is.
+  const LANE_CELL = 12;                 // px per grid cell
+  const LANE_PAD = 4;                   // px of shoulder past the ship's radius
+  const LANE_CLEAR_CAP = 48;            // px; wider than this we stop measuring
+  const LANE_OUT = 200;                 // px a route has to reach to count as out
+  const LANE_EVERY = 10;                // sample every Nth frame
+  // The playfield is read off the game rather than restated, so this grid
+  // cannot quietly stop covering it if the layout changes -- but there is no
+  // boss to ask at setup time, so the grid is built on first use instead.
+  let PLAY = null, LANE_COLS = 0, LANE_ROWS = 0;
+  let laneClear = null, laneBest = null, laneSeen = null;
+  const laneInit = () => {
+    if (PLAY) return;
+    PLAY = g.boss.attack.pf;
+    LANE_COLS = Math.ceil(PLAY.w / LANE_CELL);
+    LANE_ROWS = Math.ceil(PLAY.h / LANE_CELL);
+    const n = LANE_COLS * LANE_ROWS;
+    laneClear = new Float32Array(n);
+    laneBest = new Float32Array(n);
+    laneSeen = new Int32Array(n);
+  };
+
+  // Sampled at fixed points rather than wherever the bot drifted to. The axes
+  // that follow the bot have produced three separate artifacts in this tool
+  // already, all of them the bot's position leaking into a number that was
+  // supposed to describe the pattern. Lane structure is a property of the
+  // field, so it gets measured at the same places every time.
+  const LANE_SPOTS = [[200, 600], [356, 600], [512, 600], [356, 470]];
+
+  let laneStamp = 0;
+
+  // ---- space-time reachability -------------------------------------------
+  //
+  // Everything above, lanes included, reads ONE FRAME, and that misses a whole
+  // class of pattern -- a curtain's gap moves between rows, so on any frozen
+  // frame there is no way through and in play there is a lane. See SPACE AND
+  // TIME at the top of this file for the whole argument and for the player
+  // model that was built here and removed.
+  //
+  // What is left is deliberately one thing: a max-min dynamic program over
+  // (x, y, t) that answers whether a pattern leaves anywhere to be. The value
+  // of a cell at step t is the narrowest clearance on the best trajectory that
+  // reaches it, one step of movement is one cell -- the distance the ship
+  // covers in ST_DT frames -- and the frontier PERSISTS across windows, so the
+  // answer is the room available to a player already flying the pattern rather
+  // than one dropped into it. Seeded with the whole playfield, so it needs no
+  // sample point and cannot leak one.
+  //
+  // It runs forward on the recorded truth with no lookahead buffer, because a
+  // max-min program only ever reads clearance up to the step it is on.
+  const ST_CELL = 12;                   // px per cell
+  // px; past this a gap is simply wide, and the cap is what keeps the stamping
+  // affordable -- it sets how many cells each bullet touches, and this runs on
+  // every bullet on every frame.
+  const ST_CAP = 24;
+  const ST_HORIZON = 48;                // frames a window looks ahead
+  const ST_BLOCKED = -1e3;              // outside the arena: never a route
+  const ST_NEG = -1e9;                  // unreachable, or hit on the way here
+  let ST_DT = 3, ST_STEPS = 16, ST_COLS = 0, ST_ROWS = 0;
+  let stWalls = null, stClear = null, stVal = null, stValN = null;
+
+  const stInit = (pspeed) => {
+    if (stWalls) return;
+    ST_DT = Math.max(1, Math.round(ST_CELL / pspeed));
+    ST_STEPS = Math.max(4, Math.round(ST_HORIZON / ST_DT));
+    ST_COLS = Math.ceil(PLAY.w / ST_CELL);
+    ST_ROWS = Math.ceil(PLAY.h / ST_CELL);
+    const n = ST_COLS * ST_ROWS;
+    // The arena edges live in the grid template, so every field reset puts them
+    // back for free and no route ever leaves the playfield. The inset is the
+    // player's own clamp, read off player.js rather than restated.
+    stWalls = new Float32Array(n).fill(ST_CAP);
+    for (let gy = 0; gy < ST_ROWS; gy++) {
+      const y = PLAY.y + (gy + 0.5) * ST_CELL;
+      for (let gx = 0; gx < ST_COLS; gx++) {
+        const x = PLAY.x + (gx + 0.5) * ST_CELL;
+        if (x < PLAY.x + 10 || x > PLAY.right - 10 || y < PLAY.y + 10 || y > PLAY.bottom - 10) {
+          stWalls[gy * ST_COLS + gx] = ST_BLOCKED;
+        }
+      }
+    }
+    stClear = new Float32Array(n);
+    stVal = new Float32Array(n); stValN = new Float32Array(n);
+  };
+
+  /**
+   * Min-stamp one bullet's clearance into a grid.
+   *
+   * Clearance is to the bullet SURFACE and includes the ship's radius with no
+   * shoulder, so what comes out is the same quantity as `room` and the two can
+   * be read side by side.
+   */
+  const stStamp = (grid, bx, by, r) => {
+    const cx = (bx - PLAY.x) / ST_CELL - 0.5, cy = (by - PLAY.y) / ST_CELL - 0.5;
+    const span = Math.ceil((ST_CAP + r) / ST_CELL);
+    const i0 = Math.max(0, Math.floor(cx) - span), i1 = Math.min(ST_COLS - 1, Math.ceil(cx) + span);
+    if (i1 < i0) return;
+    const j0 = Math.max(0, Math.floor(cy) - span), j1 = Math.min(ST_ROWS - 1, Math.ceil(cy) + span);
+    const px0 = PLAY.x + (i0 + 0.5) * ST_CELL - bx;
+    for (let gy = j0; gy <= j1; gy++) {
+      const py = PLAY.y + (gy + 0.5) * ST_CELL - by;
+      const yy = py * py;
+      const base = gy * ST_COLS;
+      let px = px0;
+      for (let gx = i0; gx <= i1; gx++, px += ST_CELL) {
+        const c = Math.sqrt(px * px + yy) - r;
+        const k = base + gx;
+        if (c < grid[k]) grid[k] = c;
+      }
+    }
+  };
+
+  window.__DIFF = function measure(bi, phi, di, frames, horizon, seed, pspeed) {
     g.settings.autopilot = true;
     g.settings.autofire = true;
     g.autopilot.reset();
@@ -209,6 +491,8 @@ await page.evaluate(() => {
     g.boss.state = 'fight';
     g.boss.startPhase(phi);
     g.boss.hp = g.boss.hpMax = 1e9;
+    laneInit();
+    stInit(pspeed);
 
     const p = g.player;
     p.x = 160 + (seed % 3) * 180;
@@ -217,6 +501,133 @@ await page.evaluate(() => {
     const rooms = [];
     const drifts = [];
     const reacts = [];
+    const laneCounts = [];   // openings visible from a sample point
+    const laneWidths = [];   // px across the widest one
+    const laneLives = [];    // frames an opening lasted before it closed
+    // One entry per sample spot, holding how long a way out has existed there.
+    const laneAlive = LANE_SPOTS.map(() => ({ age: 0 }));
+    const stRooms = [];      // px a prescient player could have held, per window
+
+    const stN = ST_COLS * ST_ROWS;
+    let stFrame = 0;         // frames into the current step
+    let stStep = 0;          // steps into the current window
+
+    /** Every in-bounds cell is somewhere a player could be. */
+    const stSeed = () => {
+      for (let k = 0; k < stN; k++) stVal[k] = stWalls[k] > 0 ? ST_CAP : ST_NEG;
+    };
+    stSeed();
+
+    /** One step: carry every surviving trajectory forward. */
+    const stAdvance = () => {
+      for (let k = 0; k < stN; k++) stValN[k] = ST_NEG;
+      for (let gy = 0; gy < ST_ROWS; gy++) {
+        for (let gx = 0; gx < ST_COLS; gx++) {
+          const k = gy * ST_COLS + gx;
+          const v0 = stVal[k];
+          if (v0 === ST_NEG) continue;
+          for (let d = 0; d < 5; d++) {
+            const mx = gx + (d === 1 ? 1 : d === 2 ? -1 : 0);
+            const my = gy + (d === 3 ? 1 : d === 4 ? -1 : 0);
+            if (mx < 0 || my < 0 || mx >= ST_COLS || my >= ST_ROWS) continue;
+            const mk = my * ST_COLS + mx;
+            const c = stClear[mk];
+            if (c <= 0) continue;          // hit: this trajectory is over
+            const v = v0 < c ? v0 : c;
+            if (v > stValN[mk]) stValN[mk] = v;
+          }
+        }
+      }
+      stVal.set(stValN);
+
+      if (++stStep >= ST_STEPS) {
+        let best = ST_NEG;
+        for (let k = 0; k < stN; k++) if (stVal[k] > best) best = stVal[k];
+        if (best === ST_NEG) { best = 0; stSeed(); }
+        else for (let k = 0; k < stN; k++) if (stVal[k] > ST_NEG) stVal[k] = ST_CAP;
+        stRooms.push(best);
+        stStep = 0;
+      }
+    };
+
+    /** Clearance from every cell centre to the nearest bullet surface, capped. */
+    const laneField = (pool, hitR) => {
+      laneClear.fill(LANE_CLEAR_CAP);
+      const span = Math.ceil((LANE_CLEAR_CAP + 12) / LANE_CELL);
+      for (let j = 0; j < pool.n; j++) {
+        const b = pool.a[j];
+        if (b.harmless) continue;
+        const r = b.hr + hitR + LANE_PAD;
+        const cx = (b.x - PLAY.x) / LANE_CELL, cy = (b.y - PLAY.y) / LANE_CELL;
+        const i0 = Math.max(0, Math.floor(cx) - span), i1 = Math.min(LANE_COLS - 1, Math.ceil(cx) + span);
+        const j0 = Math.max(0, Math.floor(cy) - span), j1 = Math.min(LANE_ROWS - 1, Math.ceil(cy) + span);
+        for (let gy = j0; gy <= j1; gy++) {
+          const py = PLAY.y + (gy + 0.5) * LANE_CELL - b.y;
+          for (let gx = i0; gx <= i1; gx++) {
+            const px2 = PLAY.x + (gx + 0.5) * LANE_CELL - b.x;
+            const c = Math.sqrt(px2 * px2 + py * py) - r;
+            const k = gy * LANE_COLS + gx;
+            if (c < laneClear[k]) laneClear[k] = c;
+          }
+        }
+      }
+    };
+
+    /**
+     * The widest bottleneck on any route from (sx, sy) out to LANE_OUT away,
+     * and how many distinct bearings such a route reaches.
+     *
+     * Max-min Dijkstra: the value of a cell is the narrowest clearance on the
+     * best path to it, and we always expand the most generous frontier cell
+     * first. Clearance is bucketed to the nearest pixel so the queue is an
+     * array of buckets rather than a heap -- linear, and the whole grid is
+     * three thousand cells.
+     */
+    const laneRoutes = (sx, sy) => {
+      const sgx = Math.min(LANE_COLS - 1, Math.max(0, Math.floor((sx - PLAY.x) / LANE_CELL)));
+      const sgy = Math.min(LANE_ROWS - 1, Math.max(0, Math.floor((sy - PLAY.y) / LANE_CELL)));
+      laneStamp++;
+      const buckets = [];
+      for (let i = 0; i <= LANE_CLEAR_CAP; i++) buckets.push([]);
+      const push = (k, v) => {
+        const b = Math.max(0, Math.min(LANE_CLEAR_CAP, Math.round(v)));
+        laneBest[k] = v; laneSeen[k] = laneStamp; buckets[b].push(k);
+      };
+      const start = sgy * LANE_COLS + sgx;
+      push(start, laneClear[start]);
+      let best = 0;
+      const bearings = [];
+      for (let b = LANE_CLEAR_CAP; b >= 0; b--) {
+        while (buckets[b].length) {
+          const k = buckets[b].pop();
+          const v = laneBest[k];
+          if (Math.round(Math.max(0, Math.min(LANE_CLEAR_CAP, v))) !== b) continue;
+          const gx = k % LANE_COLS, gy = (k / LANE_COLS) | 0;
+          const dx = (gx - sgx) * LANE_CELL, dy = (gy - sgy) * LANE_CELL;
+          if (dx * dx + dy * dy >= LANE_OUT * LANE_OUT) {
+            if (v > best) best = v;
+            // Only routes worth taking count as choices: a squeeze narrower
+            // than the ship plus a little is not an option, it is a death.
+            if (v >= 6) bearings.push(Math.atan2(dy, dx));
+            continue;                   // reaching "out" ends this route
+          }
+          for (let d = 0; d < 4; d++) {
+            const nx = gx + (d === 0 ? 1 : d === 1 ? -1 : 0);
+            const ny = gy + (d === 2 ? 1 : d === 3 ? -1 : 0);
+            if (nx < 0 || ny < 0 || nx >= LANE_COLS || ny >= LANE_ROWS) continue;
+            const nk = ny * LANE_COLS + nx;
+            const nv = Math.min(v, laneClear[nk]);
+            if (nv <= 0) continue;
+            if (laneSeen[nk] === laneStamp && laneBest[nk] >= nv) continue;
+            push(nk, nv);
+          }
+        }
+      }
+      // Distinct escapes, as 60-degree sectors of the bearings that got out.
+      const sect = new Set();
+      for (const a of bearings) sect.add(Math.floor((a + Math.PI) / (Math.PI / 3)));
+      return { width: best, routes: sect.size };
+    };
     let aimedHits = 0;
     let aimedSeen = 0;
     // Bullets newly entering the planning radius, counted once each. This is
@@ -365,7 +776,31 @@ await page.evaluate(() => {
         if (predicted < 1e9) drifts.push(Math.max(0, predicted - actual));
       }
       ring[f % horizon] = nearNow;
+
+      // Space-time: the truth field for the step this frame belongs to, taken
+      // as a minimum over its frames so nothing tunnels between samples.
+      if (stFrame === 0) stClear.set(stWalls);
+      for (let j = 0; j < pool.n; j++) {
+        const b = pool.a[j];
+        if (!b.harmless && b.__id !== undefined) stStamp(stClear, b.x, b.y, b.hr + p.hitR);
+      }
+      if (++stFrame >= ST_DT) { stFrame = 0; stAdvance(); }
+
+      if (f % LANE_EVERY === 0) {
+        laneField(pool, p.hitR);
+        for (let s = 0; s < LANE_SPOTS.length; s++) {
+          const r = laneRoutes(LANE_SPOTS[s][0], LANE_SPOTS[s][1]);
+          laneCounts.push(r.routes);
+          laneWidths.push(r.width);
+          // How long a way out keeps existing. A phase that opens and shuts
+          // every few frames is passable on any given frame and unreadable
+          // over any stretch of them.
+          if (r.routes > 0) laneAlive[s].age += LANE_EVERY;
+          else if (laneAlive[s].age > 0) { laneLives.push(laneAlive[s].age); laneAlive[s].age = 0; }
+        }
+      }
     }
+    for (const a of laneAlive) if (a.age > 0) laneLives.push(a.age);
 
     const p10 = (a) => {
       if (!a.length) return null;
@@ -382,6 +817,11 @@ await page.evaluate(() => {
       // the whole window, which is the safest a phase can be and not, as an
       // empty-sample zero would have said, the most dangerous.
       warn: warns.length ? p10(warns) : 999,
+      lanes: median(laneCounts),
+      laneW: median(laneWidths),
+      laneLife: median(laneLives),
+      stroom: median(stRooms),
+      stfloor: stRooms.length ? Math.min(...stRooms) : 0,
       aimed: aimedSeen ? aimedHits / aimedSeen : 0,
       aimRate: (aimedHits * 60) / frames,
       samples: { rooms: rooms.length, drifts: drifts.length, reacts: reacts.length },
@@ -467,14 +907,17 @@ async function measure(b, ph, d) {
   const runs = [];
   for (let s = 0; s < STARTS; s++) {
     runs.push(await page.evaluate(
-      ([bi, phi, di, frames, horizon, seed]) => window.__DIFF(bi, phi, di, frames, horizon, seed),
-      [b, ph, d, FRAMES, HORIZON, s],
+      ([bi, phi, di, frames, horizon, seed, sp]) =>
+        window.__DIFF(bi, phi, di, frames, horizon, seed, sp),
+      [b, ph, d, FRAMES, HORIZON, s, PLAYER_SPEED],
     ));
   }
   const avg = (k) => runs.reduce((a, r) => a + (r[k] ?? 0), 0) / runs.length;
   return {
     room: avg('room'), tight: avg('tight'), flux: avg('flux'),
     drift: avg('drift'), react: avg('react'), warn: avg('warn'),
+    lanes: avg('lanes'), laneW: avg('laneW'), laneLife: avg('laneLife'),
+    stroom: avg('stroom'), stfloor: avg('stfloor'),
     aimed: avg('aimed'), aimRate: avg('aimRate'),
   };
 }
@@ -499,14 +942,15 @@ console.log(`Difficulty sweep on space and predictability.`);
 console.log(`${(FRAMES / 60).toFixed(0)}s x ${STARTS} start(s) per cell, ` +
   `${HORIZON}-frame prediction horizon, player speed ${PLAYER_SPEED.toFixed(2)}px/f.`);
 console.log(`safety = sqrt((tight - drift) x react x speed x (1 - ${AIM_COST} x aimed) ` +
-  `x min(1, warn/${WARN_REF})), in px. Lower is harder.\n`);
+  `x min(1, warn/${WARN_REF})), in px. Lower is harder.`);
+console.log(`Space-time: 48-frame windows, ${ST_FLOOR}px floor.\n`);
 
 if (DETAIL) {
   const b = ONLY_BOSS === null ? 4 : ONLY_BOSS;
   const ph = ONLY_PHASE === null ? 0 : ONLY_PHASE;
   console.log(`${roster[b].name}  ${ph + 1}. ${roster[b].phases[ph]}\n`);
-  console.log('DIFFICULTY     room    tight    drift    react     warn    aimed  aim/sec     flux   clearance    reach   SAFETY');
-  console.log('-'.repeat(117));
+  console.log('DIFFICULTY     room    tight    drift    react     warn    aimed  aim/sec     flux   clearance    reach   SAFETY  |  routes   lane   hold  |  st-room  st-min');
+  console.log('-'.repeat(168));
   for (let d = 0; d < 5; d++) {
     const m = await measure(b, ph, d);
     const clearance = Math.max(1, m.tight - m.drift);
@@ -523,7 +967,10 @@ if (DETAIL) {
       `${m.flux.toFixed(1)}/s`.padStart(9) +
       `${clearance.toFixed(1)}px`.padStart(12) +
       `${reach.toFixed(1)}px`.padStart(9) +
-      `${safety(m).toFixed(1)}px`.padStart(9));
+      `${safety(m).toFixed(1)}px`.padStart(9) +
+      '  |' + `${m.lanes.toFixed(1)}`.padStart(8) +
+      `${m.laneW.toFixed(1)}px`.padStart(7) + `${m.laneLife.toFixed(0)}f`.padStart(7) +
+      '  |' + `${m.stroom.toFixed(1)}px`.padStart(9) + `${m.stfloor.toFixed(1)}px`.padStart(8));
   }
 } else {
   console.log('BOSS          PHASE                       ' +
@@ -536,10 +983,12 @@ if (DETAIL) {
       ? roster[b].phases.map((_, i) => i) : [ONLY_PHASE];
     for (const ph of phases) {
       const cells = [];
+      const st = [];
       let driftSum = 0, aimSum = 0, warnSum = 0;
       for (let d = 0; d < 5; d++) {
         const m = await measure(b, ph, d);
         cells.push(safety(m));
+        st.push(m);
         driftSum += m.drift;
         aimSum += m.aimed;
         warnSum += m.warn;
@@ -549,6 +998,7 @@ if (DETAIL) {
         name: roster[b].phases[ph],
         label: `${ph + 1}. ${roster[b].phases[ph]}`,
         cells,
+        st,
       });
       console.log(
         roster[b].name.padEnd(14) +
@@ -608,6 +1058,28 @@ if (DETAIL) {
         `${o.px.toFixed(1)}px, ${o.v.toFixed(2)} of the column`);
     }
   }
+
+  // The space-time verdict, which is a check rather than a ranking: a pattern
+  // where even a player who knew exactly what every bullet would do could not
+  // hold a ship's width of clearance. It is meant to read EMPTY. Anything here
+  // has a stretch with nowhere to be, which is a different complaint from being
+  // hard and is not fixed by retuning a tier.
+  const forced = [];
+  const unread = [];
+  for (const r of rows) {
+    r.st.forEach((m, d) => {
+      if (m.stroom < ST_FLOOR) {
+        forced.push(`${r.boss} ${r.name} @ ${DIFFN[d]}: ${m.stroom.toFixed(1)}px typical`);
+      }
+      if (m.stfloor < ST_FLOOR) {
+        unread.push(`${r.boss} ${r.name} @ ${DIFFN[d]}: ${m.stfloor.toFixed(1)}px in its worst window`);
+      }
+    });
+  }
+  console.log(`\nSpace-time: ${forced.length} cell(s) typically below the ${ST_FLOOR}px floor, ` +
+    `${unread.length} that dip below it in their worst window.`);
+  for (const f of forced.slice(0, 8)) console.log('  typical  ' + f);
+  for (const u of unread.slice(0, 8)) console.log('  worst    ' + u);
 
   if (bumps.length) {
     console.log(`\n${bumps.length} non-monotonic step(s) -- an easier tier that is not easier:`);

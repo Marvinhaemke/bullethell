@@ -183,7 +183,13 @@ function* roseCurve(A) {
       if (A.L(2)) {
         A.one({ x: ex, y: ey, angle: out + HALF_PI, speed: A.spd(1.25), shape: 'pellet', r: 4, color: C.magenta, life: 430 });
       }
-      if (A.L(4)) {
+      // The counter-strand arrives at Hard, not Lunatic. Doubling `per` above
+      // Normal only thickens the traced line -- adjacent samples fly nearly
+      // parallel, so it adds bullets without adding decisions -- and with the
+      // top tiers compressed that left Hard measurably LOOSER than Normal here,
+      // in a phase a log already had at zero deaths on Hard. A third strand
+      // going the other way is a route change rather than a thicker line.
+      if (A.L(3)) {
         A.one({ x: ex, y: ey, angle: out - HALF_PI, speed: A.spd(1.25), shape: 'pellet', r: 4, color: C.rose, life: 430 });
       }
       A.mark(ex, ey, C.ice, 4);
@@ -263,7 +269,7 @@ function* delayedTheorem(A) {
       // first and relaunches a moment later, so the pause you spend reading the
       // first one is not free. Sized up once when a first pass at half this
       // count measured flat.
-      const m = A.n(34, 20);
+      const m = A.n(42, 24);
       for (let i = 0; i < m; i++) {
         A.one({
           angle: (i + 0.5) * TAU / m - k * 0.33,

@@ -124,7 +124,12 @@ function* lissajousChoir(A) {
         angle: t * 0.05 * (e % 2 ? -1 : 1),
         shape: 'pellet', color: cols[e], r: 4.2, life: 340,
       });
-      if (A.L(3)) {
+      // Every other beat. Three voices each firing two rings every ten frames
+      // is 144 bullets a second out of three emitters that are themselves
+      // moving, and the phase stayed at 4.67 deaths an attempt on Hard even
+      // after the aimed rice came out -- a third of those deaths were to this
+      // ring. Moving origins are this pattern's identity, so the rate gives.
+      if (A.L(3) && (t % (A.w(11) * 2)) < A.w(11)) {
         // A second ring per voice, counter-rotating, rather than the aimed
         // white rice each emitter used to spit at the player every eleven
         // frames. That one was missed in the pass that took the aimed volleys
@@ -163,7 +168,14 @@ function* convergence(A) {
   // Stretched with the slowdown below. A wave that travels 24% slower is
   // resident 24% longer, so leaving the beat alone would have handed back as
   // density exactly what the speed cut was meant to give away.
-  const wave = A.gap(62);
+  // Stretched again, 62 -> 72. The compression of the top two tiers pulls this
+  // phase down with everything else, but it was scoring 6.00 deaths an attempt
+  // on Hard against a row median of 2.00 -- three times over, and the worst
+  // phase in three logs running. A row outlier needs its own lever as well as
+  // the tier's: with the wave slowed to 2.05 the old beat still had three
+  // converging ranks in the air at once, which is the squeeze rather than any
+  // one bullet.
+  const wave = A.gap(72);
 
   // No bullet in this phase may simply appear on top of the player.
   //

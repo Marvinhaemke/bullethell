@@ -211,6 +211,7 @@ problem, not a prediction one, and it lands on a different axis.
 | `warn` | reading time: how old a bullet was, in frames, the first time it came within 60px. 10th percentile again. |
 | `flux` | bullets newly entering the planning radius per second. Reported, not scored. |
 | `aimRate` | aimed launches per second — the same events as `aimed`, counted absolutely. Reported, not scored. |
+| `stroom` | clearance a player could *hold throughout* a 48-frame window, over (x, y, t). A floor check, not a ranking — see below. |
 
 They compose without fudge factors, because they are all in the same units.
 `tight - drift` is the gap you can actually count on, since drift is by
@@ -285,6 +286,110 @@ Two things it took a rewrite to get right, both worth not repeating:
   of a filter: Loom at Novice scored 38 frames against 129 at Easy, the sparsest
   tier reading as the least warning in the phase, because the bot had room to
   sit against a side edge where the horizontal ranks enter beside it.
+
+### Lanes: a hypothesis that did not survive
+
+A player proposed the missing axis was **lane forming** — a route you are pushed
+into or choose, not too dense, hard to leave, where *"the screen can be full of
+bullets but the lane is still open enough for a human to dodge"*. The prediction
+was that phases built that way would be the ones that kill least.
+
+It is measured now — `lanes`, `laneW`, `laneLife` in `--detail` — and the
+prediction is **false**. The first implementation cast rays and measured
+emptiness rather than corridors, which is its own lesson: *a corridor that bends
+is invisible to a straight ray, and a lane that did not bend would not need
+choosing*. The second rasterises the free space and runs a max-min search for
+the widest bottleneck on any route out. That one is correct — it gives Rose
+Curve two routes through a 9px squeeze and Convergence six through a 29px one,
+which is what the eye sees — and it still does not predict deaths: **+0.21,
++0.12, −0.10**, with the two strongest pointing the *wrong way*.
+
+The reason is visible once the numbers are up. Lane quality is close to a
+measure of how open the field is, and the lethal phases here are the sparse fast
+ones, not the dense ones. Convergence has the best lane structure in the game
+and the worst death rate, because it kills with speed across an empty screen.
+
+**What the lanes do track is taste**, which is what the player was describing:
+
+| | routes | bottleneck |
+| --- | --- | --- |
+| *praised* — Phyllotaxis | 1 | 6.8px |
+| *praised* — Rose Curve | 2 | 9.0px |
+| *praised* — Delayed Theorem | 4 | 20.6px |
+| *disliked* — Convergence | 6 | 29.4px |
+| *disliked* — Lissajous Choir | 5 | 10.9px |
+| *disliked* — Curveshot | 5 | 12.5px |
+
+Few tight routes is the maze feeling that got called satisfying; many wide ones
+is an open field, which did not. So these axes are a **design-intent readout** —
+what *kind* of phase did I just build — and not a difficulty term.
+
+On the evidence of three logs, the thing that does govern deaths is `drift`: the
+only axis whose sign is right on all three. `aimed` is stronger on the two Hard
+logs and inverts on Normal, so it is not stable enough to reweight on — every
+`--aim-cost` from 0.5 to 2.0 was tried and none wins across all three. Both are
+the same statement twice: **a bullet that does something after launch you did
+not read**, which is exactly what the design principle above says to avoid.
+
+### Space and time: what one frame cannot show
+
+Every axis above, lanes included, reads a **single frame**, and that misses a
+whole class of pattern. The clearest case is a **curtain** — rows of bullets
+sweeping down with a gap that slides sideways from row to row. Freeze any frame
+and the rows are a grid whose gaps do not line up vertically, so the only way
+through is a squeeze between two rows. That is what the lane measure reports for
+Weaver's Curtain: **3.8px of bottleneck at Novice falling to 0.0 at Lunatic**,
+tighter than anything else in the game.
+
+Played, nobody goes through the rows. You *ride* the gap: stand still, let a row
+pass, slide sideways into the next gap as it arrives. A lane-follower written to
+check clears the phase for fifty seconds at every tier including Lunatic. The
+room is real, there is plenty of it, and none of it exists on any single frame —
+it exists in the sequence.
+
+So `stroom` asks over **(x, y, t)**: what is the largest clearance a player
+could *hold throughout* the next 48 frames? A max-min dynamic program, one cell
+of movement per step, run forward on what the bullets really did.
+
+| Weaver's Curtain | NOV | EASY | NORM | HARD | LUN |
+| --- | --- | --- | --- | --- | --- |
+| one frame (`laneW`) | 3.8px | 2.9px | 0.9px | 1.0px | 0.0px |
+| space-time (`stroom`) | 24px | 24px | 22.5px | 22.3px | 21.1px |
+
+**The player has to be persistent**, and that took a wrong answer to learn. The
+first version restarted the search from a fixed sample point every window — the
+same fixed-point discipline the lane axes use, adopted for the same good reason
+— and scored the Curtain *worse* than the snapshot did, 4px at every tier. It
+was right to: a player parachuted onto a sample point has to cross the rows to
+reach the lane, and would have to do it again every window, forever. **Riding a
+lane is a commitment, and the room is only there for someone already in it.** So
+the frontier carries over between windows; only the value resets.
+
+**What it says, across all twenty-one phases at five tiers:** `stroom` sits at
+its 24px cap in every cell but three, and those three are the Curtain. Read
+plainly — *nothing in this game denies a player room*, and the pattern that
+comes closest is the one the single-frame measure called impossible. That is a
+floor check passing, which is what it is for. It should report nothing, like
+`npm run deadzones`, and it will fire the day a pattern is built with genuinely
+nowhere to be.
+
+**What was tried and dropped: a reader.** `stroom` is prescient — the trajectory
+is chosen in hindsight — so a second player was built to be the honest half: at
+each window it extrapolated the bullets it could see along straight lines,
+solved the same program on that imagined field, and flew the plan through what
+really happened. It is gone, because its trace shows it measuring itself. On the
+Curtain at Hard it wanders out of the lane during the opening seconds — while
+the screen is still filling from the top and every direction reads safe — and
+corners itself bottom-left, where the lane is eighteen cells away and its
+horizon is sixteen. Every plan from there scores an identical **1.4px**, so the
+max-min objective is flat, so it never moves again: 1.4px for the remaining
+nineteen windows against the 22px the pattern actually affords. Replanning more
+often makes it *worse*, because each fresh plan ratchets it further out.
+
+A better one is a research problem, not a parameter — it needs the thing a
+player has and this does not, knowledge of where a pattern *puts* bullets rather
+than only where they are. `drift` already measures the read-failure dimension,
+at frame level and without an agent.
 
 ### What a flat ladder costs the measurement
 
@@ -417,6 +522,35 @@ a person.
 So the game records what actually happens, in three streams. Deaths alone are
 not enough — a pattern cleared first try having grazed forty bullets and one
 cleared on the third attempt both report zero deaths:
+
+### The band
+
+`npm run deaths` scores every phase against a target, in deaths per attempt at
+the tier you are meant to be playing:
+
+| | |
+| --- | --- |
+| **under 0.5** | too easy — though one such phase per boss is fine, more so on the early bosses |
+| **0.5 – 1.5** | right |
+| **1.5 – 2** | very hard; one per boss is acceptable late in the run |
+| **2 – 3** | too hard *here* — this is what the next tier up should look like |
+| **over 3** | not a difficulty, a wall: bad design, or two tiers misplaced |
+
+This is the only calibration in the project that came from a person rather than
+from a model of one, and it outranks everything else here for exactly that
+reason. It is one player's skill — self-described as *"not a hardcore bullet
+hell player, but not that bad"* — so read it as what a tier should **feel** like
+to the person it is aimed at, not as a universal constant.
+
+It is also what caught the ladder's biggest fault. Three Hard runs at three
+attempts a phase scored a **median of 2.00**, with ten of twenty phases above the
+band and seven of those at *"two tiers up, or bad design"* — while the same
+player's Normal run had thirteen of twenty phases at **zero**. One step was
+spanning the entire good band and overshooting it. That is a tier-table problem,
+not twenty pattern problems, and it is why `DIFFICULTIES` now compresses toward
+the top instead of stepping in even ratio: difficulty is badly superlinear in
+these knobs, so the +32% density and +14% speed that used to separate Normal
+from Hard were multiplying deaths by about four.
 
 | stream | |
 | --- | --- |
