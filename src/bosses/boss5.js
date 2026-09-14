@@ -125,7 +125,19 @@ function* lissajousChoir(A) {
         shape: 'pellet', color: cols[e], r: 4.2, life: 340,
       });
       if (A.L(3)) {
-        A.one({ x: ex, y: ey, angle: A.aim(ex, ey), speed: A.spd(2.9), shape: 'rice', color: C.white, r: 4.2 });
+        // A second ring per voice, counter-rotating, rather than the aimed
+        // white rice each emitter used to spit at the player every eleven
+        // frames. That one was missed in the pass that took the aimed volleys
+        // out, and it was the worst-placed of the lot: an aimed shot from an
+        // emitter that is itself sliding across the playfield gives you neither
+        // a fixed origin to learn nor a heading to read. Two of the five deaths
+        // a Hard log recorded here were that bullet.
+        A.ring({
+          x: ex, y: ey,
+          n: A.n(4, 3), speed: A.spd(2.15),
+          angle: -t * 0.037 * (e % 2 ? -1 : 1) + 0.6,
+          shape: 'rice', color: C.white, r: 4.2, life: 320,
+        });
       }
     }
     if (A.L(4) && (t % 120) < 9) {

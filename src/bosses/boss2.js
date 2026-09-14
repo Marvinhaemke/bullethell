@@ -153,6 +153,7 @@ function* ruleThirty(A) {
   let cells = caSeed(M, 'center');
   let sier = caSeed(S, 'center');
   let rot = 0;
+  let beat = 0;
 
   while (true) {
     for (let i = 0; i < M; i++) {
@@ -182,11 +183,16 @@ function* ruleThirty(A) {
       if (live === 0 || live > sier.length * 0.75) sier = caSeed(S, 'center');
     }
 
-    if (A.L(3)) {
-      // A second reading of the same automaton, counter-rotating and slower,
-      // instead of the fast aimed kunai this used to throw every fourth step.
-      // The cells are the phase; taking another cut through them is the way to
-      // make it denser without asking the player to stop reading and flinch.
+    // A second reading of the same automaton, counter-rotating and slower,
+    // instead of the fast aimed kunai this used to throw every fourth step.
+    // The cells are the phase; taking another cut through them is the way to
+    // make it denser without asking the player to stop reading and flinch.
+    //
+    // Every other beat, not every beat. On every beat it put 1271 bullets on
+    // screen at Hard -- half again as many as anything else in the game -- and
+    // at that point the automaton has stopped being a structure you read and
+    // become a texture you hope to be lucky in.
+    if (A.L(3) && beat % 2 === 0) {
       for (let i = 0; i < M; i++) {
         if (!cells[i]) continue;
         A.one({
@@ -199,6 +205,7 @@ function* ruleThirty(A) {
     }
 
     rot += 0.21;
+    beat++;
     A.sfx('shot', 90);
     yield A.w(12);
   }

@@ -30,7 +30,16 @@ function* ballisticRain(A) {
         // killed a player here was doing 9.42px/frame against 1.5-3.8 for
         // every other pattern, and crossing their path rather than closing on
         // it. Fast and sideways is the combination that reads as random.
-        ay: g, maxSpeed: A.spd(6.5),
+        // Capped in absolute terms as well as scaled ones. Terminal velocity
+        // is a READABILITY parameter here, not a difficulty knob: past about
+        // six and a half pixels a frame a lobbed arc stops being a trajectory
+        // you can follow and becomes something that arrives. Scaling it alone
+        // put Hard at 7.4 and Lunatic at 8.5, and a Hard log came back with six
+        // of its seven deaths on this phase to arcs doing 6.3 to 7.5 -- the
+        // same complaint the run before had at Normal, one tier up. The tiers
+        // below Normal still ladder; Hard and Lunatic take their difficulty
+        // from count and beat instead.
+        ay: g, maxSpeed: Math.min(A.spd(6.5), 6.6),
       });
     }
 
@@ -58,7 +67,7 @@ function* ballisticRain(A) {
         const x = A.rnd.rr(PLAY.x + 40, PLAY.right - 40);
         A.one({
           x, y: PLAY.y - 40, angle: HALF_PI + A.rnd.rr(-0.3, 0.3),
-          speed: A.spd(1.2), ay: g * 0.8, maxSpeed: A.spd(5.5),
+          speed: A.spd(1.2), ay: g * 0.8, maxSpeed: Math.min(A.spd(5.5), 5.6),
           shape: 'hex', color: C.red, r: 6,
         });
       }
@@ -215,8 +224,14 @@ function* curveshot(A) {
 
     // Both fans always fire: bending the same volley two ways *is* the
     // pattern, and with only one of them there is no crossfire to be caught in.
-    A.fan({ n, spread: 1.1, angle: aim - sgn * bend * 0.5, speed: A.spd(2.85), turn: sgn * curve, turnDecay: decay });
-    A.fan({ n, spread: 1.1, angle: aim + sgn * bend * 0.5, speed: A.spd(2.4), turn: -sgn * curve, turnDecay: decay, color: C.orange });
+    // Capped above Normal, like Ballistic Rain's arcs and for the same reason.
+    // A bullet that bends is one whose heading you have to keep re-reading, and
+    // the faster it does that the less the reading is worth -- a Hard log put
+    // five of this phase's six deaths on the 3.25px/frame outer fan. Curvature
+    // is this pattern's whole identity, so the speed is what gives instead.
+    const arc = (v) => Math.min(A.spd(v), v * 1.05);
+    A.fan({ n, spread: 1.1, angle: aim - sgn * bend * 0.5, speed: arc(2.85), turn: sgn * curve, turnDecay: decay });
+    A.fan({ n, spread: 1.1, angle: aim + sgn * bend * 0.5, speed: arc(2.4), turn: -sgn * curve, turnDecay: decay, color: C.orange });
     if (A.L(2) && k % 2 === 0) {
       A.ring({ n: A.n(10, 7), speed: A.spd(1.9), angle: k * 0.5, shape: 'pellet', color: C.red, r: 4.2 });
     }
