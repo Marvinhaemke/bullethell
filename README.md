@@ -279,7 +279,31 @@ Two things it took a rewrite to get right, both worth not repeating:
   drifts under the boss and a ring spawns around it at age zero. Three phases
   read 0.05–0.09 of their column at Novice *and nowhere else* before those
   samples were excluded. Nothing real is lost: a pattern that puts bullets on
-  the player wherever the player is puts them far from its own emitter.
+  the player wherever the player is puts them far from its own emitter. The
+  cut-off is the planning radius — the same gate `flux` and `react` already use,
+  so all three axes speak about one population. A tighter cut-off was not enough
+  of a filter: Loom at Novice scored 38 frames against 129 at Easy, the sparsest
+  tier reading as the least warning in the phase, because the bot had room to
+  sit against a side edge where the horizontal ranks enter beside it.
+
+### What a flat ladder costs the measurement
+
+The second run log is the one that showed the limit. Thirteen of twenty patterns
+came back at **zero** deaths per attempt, with everything the player died to
+concentrated in three phases. That is the ladder working, and it leaves almost
+no spread for a rank correlation to bite on — the same formula that scored
+−0.672 against the first log scores −0.197 against the second, and the
+difference is the ground truth flattening rather than the model getting worse.
+
+So the honest summary of what the metric is now good for: it is calibrated
+against one session, it correctly puts the pattern the player names first at the
+top, and it should be read as a way of finding *structural* faults — an
+inversion, a phase that gets looser as it gets harder, a cell way off its column
+— rather than as a ranking to tune toward. Where it disagrees with a log, the
+log wins. It currently flags Loom at four tiers and Maelstrom at two; the player
+cleared both without dying once. Both are patterns whose safe route is
+signposted — a moving gap, a vortex — and "the room is tight but the way through
+is obvious" is not something any axis here measures.
 
 ## Aimed volleys, and why there are none left
 

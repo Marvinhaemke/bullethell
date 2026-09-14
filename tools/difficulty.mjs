@@ -248,13 +248,19 @@ await page.evaluate(() => {
     // stragglers. Age at first contact needs no extrapolation and no special
     // case: whatever the bullet did to get there, this is how long the player
     // had to watch it do it.
-    // Only bullets that were outside GUARD when they first appeared count. The
-    // player can walk into an emitter, and on the sparse low tiers the bot
-    // does: with nothing to dodge it drifts wherever it likes, including under
-    // the boss, and a ring spawning around it there is contact at age zero. It
-    // is not an ambush if you went to meet it, and there is no way to tell the
-    // two apart after the fact -- so bullets born already close are left out of
-    // the sample rather than scored. Nothing real is lost: a pattern that puts
+    // Only bullets born OUTSIDE the planning radius count -- the same gate
+    // `flux` and `react` already use, so all three axes speak about the same
+    // population: what came into the picture you were planning over.
+    //
+    // The player can walk into an emitter, and on the sparse low tiers the bot
+    // does: with nothing to dodge it drifts wherever it likes, and a rank
+    // spawning beside it there is contact almost at once. It is not an ambush
+    // if you went to meet it, and there is no way to tell the two apart after
+    // the fact. Gating on GUARD instead of NEAR was not enough of a filter:
+    // Loom at Novice scored 38 frames against 129 at Easy and 136 at Normal --
+    // the sparsest tier reading as the least warning in the phase -- because
+    // the bot had room to sit against a side edge, where the horizontal ranks
+    // enter a hundred pixels away. Nothing real is lost: a pattern that puts
     // bullets on the player wherever the player is puts them a long way from
     // its own emitter, so they are born far and score their travel honestly.
     const GUARD = 60;           // px; the radius a dodge has to be started for
@@ -308,7 +314,7 @@ await page.evaluate(() => {
         // enough to have to be dodged.
         if (!seen.has(b.__id)) {
           seen.add(b.__id);
-          if (dist > GUARD + b.hr) bornFar.add(b.__id);
+          if (dist > NEAR) bornFar.add(b.__id);
         } else if (dist <= GUARD + b.hr && bornFar.has(b.__id) && !warned.has(b.__id)) {
           warned.add(b.__id);
           warns.push(b.age);

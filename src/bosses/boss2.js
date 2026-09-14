@@ -222,11 +222,16 @@ function* reflection(A) {
     // four; and the lifetime scales with rate, so the count on screen tracks
     // density like everywhere else. Both clamped to ease only: Normal is the
     // reference tuning and Novice's already-generous field is left alone.
-    // 1/1/1/2/2. A second bounce doubles how long a bullet stays in the box
-    // AND squares the number of reflections you have to hold in your head, so
-    // turning it on at Normal was a step-change in chaos rather than a
-    // gradient. It now arrives at Hard, with the rest of the ladder carried by
-    // density and speed.
+    // 1/1/1/2/2. A second bounce squares the number of reflections you have to
+    // hold in your head, so turning it on at Normal was a step-change in chaos
+    // rather than a gradient. It arrives at Hard, with the rest of the ladder
+    // carried by density and speed.
+    //
+    // Note it no longer costs anything in DENSITY, only in chaos: lifetime is a
+    // range now, so a bullet travels 760px whether it turns once or twice.
+    // Giving the low tiers a second bounce for coverage was tried on that basis
+    // and changed neither the parking spots nor the hitbox ladder, so the
+    // simpler ladder stands.
     const bounces = A.D.layers >= 3 ? 2 : 1;
     // Lifetime as RANGE rather than frames. A bouncer is exempt from
     // clampLife -- its lifetime IS its exit -- so `life` alone decides how far
@@ -236,22 +241,47 @@ function* reflection(A) {
     // a spot at Novice you could park in. 760px covers the playfield diagonal
     // with enough left to bounce back across it.
     const range = (v) => Math.round(760 / v);
-    const fast = A.spd(1.85);
-    const slow = A.spd(1.4);
-    const mid = A.spd(1.62);
+    // 1.85/1.4 -> 1.55/1.18. Both bullets that killed a player here were
+    // ricochets at 1.4 and 1.62 that had been in the box for four hundred-odd
+    // frames: by then a bouncer has changed direction twice and where it is
+    // going is a question, not a reading. Slowing the whole lattice is the
+    // difference between a question you can answer and one you cannot.
+    //
+    // Counts at Normal and above come down with it. `range` holds travel
+    // distance constant, so a slower bullet simply lives longer -- leaving the
+    // counts alone would have put a fifth more ricochets in the box and spent
+    // the slowdown on density.
+    const fast = A.spd(1.55);
+    const slow = A.spd(1.18);
+    const mid = A.spd(1.36);
+    // The FLOORS go the other way, because slowing the lattice cost the low
+    // tiers their coverage rather than their density. A slower bullet still
+    // traces 760px, but it visits those pixels over eleven seconds instead of
+    // eight, and the dead-zone scan started finding places along the bottom
+    // that nothing reached inside its window. More bearings per wave is the
+    // cheapest way to buy that back; more waves, longer travel and a second
+    // bounce were all tried and all cost more for less.
+    //
+    // Jitter below Normal for the same reason. Evenly spaced slots precessing
+    // by a fixed step visit a fixed lattice of bearings, and that lattice had a
+    // hole in it -- one spot stayed unthreatened through every count and range,
+    // and merely moved when the bearings changed. Jitter is already the knob
+    // the low tiers use for sloppy aim, and a third of a slot of it closes the
+    // lattice statistically rather than by coincidence.
+    const spray = () => (A.L(2) ? 0 : A.jit() * 2);
     A.ring({
-      n: A.n(12, 7), speed: fast, angle: k * 0.91,
+      n: A.n(10, 9), speed: fast, angle: k * 0.91 + spray(),
       bounce: bounces, life: range(fast),
     });
     if (A.L(1)) {
       A.ring({
-        n: A.n(9, 5), speed: slow, angle: -k * 1.3 + 0.4,
+        n: A.n(8, 6), speed: slow, angle: -k * 1.3 + 0.4 + spray(),
         bounce: bounces, life: range(slow), color: C.magenta, shape: 'hex', r: 5.2,
       });
     }
     if (A.L(2)) {
       A.ring({
-        n: A.n(8, 4), speed: mid, angle: k * 0.55 + 1.1,
+        n: A.n(6, 3), speed: mid, angle: k * 0.55 + 1.1,
         bounce: bounces, life: range(mid), color: C.rose, shape: 'diamond', r: 4.8,
       });
     }
