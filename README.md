@@ -279,7 +279,93 @@ Two things it took a rewrite to get right, both worth not repeating:
   drifts under the boss and a ring spawns around it at age zero. Three phases
   read 0.05–0.09 of their column at Novice *and nowhere else* before those
   samples were excluded. Nothing real is lost: a pattern that puts bullets on
-  the player wherever the player is puts them far from its own emitter.
+  the player wherever the player is puts them far from its own emitter. The
+  cut-off is the planning radius — the same gate `flux` and `react` already use,
+  so all three axes speak about one population. A tighter cut-off was not enough
+  of a filter: Loom at Novice scored 38 frames against 129 at Easy, the sparsest
+  tier reading as the least warning in the phase, because the bot had room to
+  sit against a side edge where the horizontal ranks enter beside it.
+
+### What a flat ladder costs the measurement
+
+The second run log is the one that showed the limit. Thirteen of twenty patterns
+came back at **zero** deaths per attempt, with everything the player died to
+concentrated in three phases. That is the ladder working, and it leaves almost
+no spread for a rank correlation to bite on — the same formula that scored
+−0.672 against the first log scores −0.197 against the second, and the
+difference is the ground truth flattening rather than the model getting worse.
+
+So the honest summary of what the metric is now good for: it is calibrated
+against one session, it correctly puts the pattern the player names first at the
+top, and it should be read as a way of finding *structural* faults — an
+inversion, a phase that gets looser as it gets harder, a cell way off its column
+— rather than as a ranking to tune toward. Where it disagrees with a log, the
+log wins. It currently flags Loom at four tiers and Maelstrom at two; the player
+cleared both without dying once. Both are patterns whose safe route is
+signposted — a moving gap, a vortex — and "the room is tight but the way through
+is obvious" is not something any axis here measures.
+
+## What a good pattern does
+
+The Fractal is the boss that works. A player named Phyllotaxis, Rose Curve and
+Delayed Theorem as the mix they want — *tight dodges from slow, predictable
+shapes; challenging without overwhelming; never a test of reaction time* — and a
+Hard run bears it out. Those three took 2, 1 and 0 deaths while recording 39, 16
+and 32 grazes: the player was constantly close to bullets and almost never hit,
+which is the signature of a pattern being **solved** rather than survived.
+
+Set against the same run's worst — Reflection 7, Ballistic Rain 7, Convergence 7,
+Curveshot 6 — one distinction does most of the work:
+
+> **Draw shapes by moving the emitter, not by bending the bullets.**
+
+Every phase in that run where a *bullet* changes course after launch is in the
+top four killers: Reflection ricochets, Curveshot curves, Ballistic Rain falls.
+Every phase that draws its shape by moving the *emission point* while the bullets
+fly straight sits at 0–2 deaths — Phyllotaxis steps its emission angle by the
+golden angle, Rose Curve walks an emitter along the polar curve, Maelstrom
+launches at a fixed pitch to the radius, Twin Helix rotates its arms. The screen
+fills with structure either way. The difference is that in the second kind, what
+you read at the moment a bullet appears is still true when it reaches you, so
+reading it once is worth something.
+
+The rest of what those three have in common:
+
+- **One origin.** Everything comes from the boss, radially. The player learns one
+  geometry and it holds for the whole phase. Convergence spawns around the whole
+  border and Lissajous Choir's emitters roam the playfield; both are in the worst
+  five.
+- **One speed per layer,** and layers separated by speed. Phyllotaxis runs at
+  1.2, 1.62, 1.8, 2.5 and 3.05 — each layer reads as its own object moving at its
+  own rate, rather than as one soup.
+- **Slow.** The structural layers sit between 1.2 and 3.0px/frame. Nothing in
+  these three is fast.
+- **Nothing aimed,** so the shape is the same wherever you stand and what you
+  learned last attempt still applies.
+- **The shape is shown before it is dangerous.** Rose Curve spends two seconds
+  drawing itself before it unfolds. Phyllotaxis's arms are visible as spokes long
+  before they arrive.
+
+Delayed Theorem is the exception that sharpens the rule. Its bullets *do* change
+course — a dense ring races out at 4.6, freezes, then relaunches aimed — and it
+is the one phase in the game at zero deaths on both Normal and Hard. The change
+is legal because it happens **stationary and telegraphed**: you are given a
+motionless configuration to read and a visible wind-up before anything moves. A
+trajectory that changes is fine; a trajectory that changes *while you are trying
+to read it* is not.
+
+So when a pattern has to come down, the levers in order:
+
+1. **Top speed**, first and always.
+2. **Whether the path changes after launch** — and if it must, announce it.
+3. **Aiming** (see below).
+4. **Count**, last.
+
+The first three cost readability; only the fourth costs room. Room is the thing a
+player can solve, so it is the last thing to take away — and often the right way
+to spend what the first three give back. That is the trade the aimed volleys were
+removed on, and it is why Loom at Lunatic and Reflection got the removal with
+nothing in its place while eight other phases got denser instead.
 
 ## Aimed volleys, and why there are none left
 
@@ -449,6 +535,10 @@ hashed — a long cache would strand players on an old build. `music/` is
 immutable and cached for a year.
 
 ## How patterns are written
+
+For what to aim at, see [What a good pattern does](#what-a-good-pattern-does) —
+one origin, one speed per layer, shapes drawn by moving the emitter rather than
+by bending the bullets. This section is the mechanics.
 
 Patterns are generator functions that `yield` a number of frames to wait, which
 lets densely-timed choreography read as straight-line code:

@@ -125,7 +125,19 @@ function* lissajousChoir(A) {
         shape: 'pellet', color: cols[e], r: 4.2, life: 340,
       });
       if (A.L(3)) {
-        A.one({ x: ex, y: ey, angle: A.aim(ex, ey), speed: A.spd(2.9), shape: 'rice', color: C.white, r: 4.2 });
+        // A second ring per voice, counter-rotating, rather than the aimed
+        // white rice each emitter used to spit at the player every eleven
+        // frames. That one was missed in the pass that took the aimed volleys
+        // out, and it was the worst-placed of the lot: an aimed shot from an
+        // emitter that is itself sliding across the playfield gives you neither
+        // a fixed origin to learn nor a heading to read. Two of the five deaths
+        // a Hard log recorded here were that bullet.
+        A.ring({
+          x: ex, y: ey,
+          n: A.n(4, 3), speed: A.spd(2.15),
+          angle: -t * 0.037 * (e % 2 ? -1 : 1) + 0.6,
+          shape: 'rice', color: C.white, r: 4.2, life: 320,
+        });
       }
     }
     if (A.L(4) && (t % 120) < 9) {
@@ -148,7 +160,10 @@ function* convergence(A) {
   // waves on Novice against 8.3 on Lunatic -- so the easier tiers got thinner
   // waves and slower bullets but no relief at all on the squeeze itself, which
   // is the thing you actually die to. A.gap() is A.w() corrected for that.
-  const wave = A.gap(52);
+  // Stretched with the slowdown below. A wave that travels 24% slower is
+  // resident 24% longer, so leaving the beat alone would have handed back as
+  // density exactly what the speed cut was meant to give away.
+  const wave = A.gap(62);
 
   // No bullet in this phase may simply appear on top of the player.
   //
@@ -177,29 +192,36 @@ function* convergence(A) {
     for (let i = 0; i < n; i++) {
       const u = (i + 0.5) / n + k * 0.071;
       const p = spawnAt(u);
-      // Below Hard, only half the ring tracks you; the rest converges on the
-      // centre. At 92% aimed this was the most aggressively targeted pattern
-      // in the game, and because every wave re-aims, no spot stays safe for
-      // long -- which is what makes it read as random rather than as a shape
-      // to solve. The unaimed half gives the wave a structure that holds still
-      // long enough to be read.
-      // Half the wave tracks you until Lunatic, not until Hard. Once reading
-      // time was measured, this phase came out as the tightest column in the
-      // game from Normal up even after the spawns were moved off the player --
-      // it is still a wave that re-aims from the border every time, which is
-      // the definition of a shape that will not hold still long enough to be
-      // read. Full tracking is now the top tier's alone.
-      const tracks = A.L(4) || i % 2 === 0;
+      // WHOLE waves alternate, rather than alternate bullets within a wave.
+      //
+      // Half the bullets aiming at you and half at the centre is the same
+      // aimed share either way, but interleaved it means every wave has two
+      // focal points at once and neither is a shape -- which is exactly the
+      // report that came back: fast bullets and "no bigger patterns readable".
+      // Alternating by wave, each one is a single legible object: a ring
+      // closing on where you stood, then a ring closing on the middle. Both
+      // can be answered by moving, and the answer is visible from the moment
+      // the wave leaves the border. Lunatic still tracks with everything.
+      const tracks = A.L(4) || k % 2 === 0;
       A.one({
         x: p.x, y: p.y,
         angle: tracks ? A.aim(p.x, p.y) : Math.atan2(PLAY.cy - p.y, PLAY.cx - p.x),
-        speed: A.spd(2.7),
+        // 2.7 -> 2.05. Fifteen of the twenty-one deaths a player logged on this
+        // phase were this one bullet, and their read was that the wave is fast
+        // without being a shape they can follow. Moving the spawns off the
+        // player bought reading time at the start of a bullet's life; this buys
+        // it over the whole approach, which is where the wave has to resolve
+        // into something with a route through it.
+        speed: A.spd(2.05),
         shape: 'kunai', color: tracks ? C.rose : C.magenta, r: 4.7,
       });
     }
     A.ring({
       n: A.n(10, 6), speed: A.spd(1.15), angle: k * 0.41,
-      accel: 0.014, maxSpeed: A.spd(4.2),
+      // The other four deaths were this ring, every one of them after it had
+      // wound up past 3.7px/frame. It is meant to be the outward pressure that
+      // stops you retreating into the middle, not the fastest thing on screen.
+      accel: 0.010, maxSpeed: A.spd(3.0),
       shape: 'circle', color: C.red, r: 5,
     });
     if (A.L(2)) {
@@ -239,7 +261,12 @@ function* finalTheorem(A) {
   // what the easier tiers actually meet. Easy read as the tightest cell in its
   // column here, and thinning the slow phyllotaxis stream instead made it
   // WORSE -- what was left when the stream thinned was these two.
-  const ringEvery = A.gap(15);
+  // The ring beat goes 15 -> 20. Four of the five deaths a player logged on
+  // this phase were this one layer -- the curving ice ring -- and they reported
+  // the phase as having got harder rather than easier in the pass that widened
+  // its fan. It fires nine bullets a beat into a field already carrying five
+  // hundred, and at fifteen frames that is the densest clock here.
+  const ringEvery = A.gap(20);
   const fanEvery = A.gap(52);
   // A.gap() rather than A.w(): rule 30 fires a fixed 37-cell automaton, so the
   // bullets per event never scaled with difficulty either, and the population
@@ -313,7 +340,9 @@ function* finalTheorem(A) {
       A.ring({
         n: A.n(9, 6), speed: A.spd(2.4), angle: i * 0.041,
         shape: 'ring', color: C.ice, r: 5,
-        turn: (i % (ringEvery * 2) === 0 ? 1 : -1) * 0.012, turnDecay: 0.996,
+        // Curving less hard, too. Every one of those deaths was to a bullet
+        // this ring had bent out from under the route the player picked.
+        turn: (i % (ringEvery * 2) === 0 ? 1 : -1) * 0.009, turnDecay: 0.996,
       });
     }
 
@@ -326,8 +355,11 @@ function* finalTheorem(A) {
       // launched across the field instead, the arcs are still the thing you
       // route around, without the phase asking you to answer where you happen
       // to be standing at one particular frame.
+      // Back to five at 1.05 rad: widening it to six at 1.35 in the same pass
+      // that unaimed it made this phase read as harder, not easier. Unaimed was
+      // the part worth keeping.
       A.fan({
-        n: A.n(6, 4), spread: 1.35,
+        n: A.n(5, 3), spread: 1.05,
         angle: i * 0.017 + sgn * 0.9, speed: A.spd(3.0),
         turn: sgn * 0.018, turnDecay: 0.992,
         shape: 'rice', color: C.white, r: 4.4,
