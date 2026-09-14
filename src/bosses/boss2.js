@@ -5,7 +5,6 @@
 import { TAU, PI, HALF_PI } from '../mathx.js';
 import { C, PLAY } from '../config.js';
 import { moveSway, moveWide, moveStatic, caStep, caSeed } from '../patterns.js';
-import { PLAYER_SPEED } from '../player.js';
 
 // --- Phase 1: Loom ----------------------------------------------------------
 // Ranks of bullets sweep in from alternating edges, each with a gap. Two
@@ -179,7 +178,21 @@ function* ruleThirty(A) {
     }
     cells = caStep(cells, 30);
 
-    if (A.L(2)) {
+    // The two secondary readings ALTERNATE, so a beat carries two cuts through
+    // the automaton and never three.
+    //
+    // Three deaths an attempt in each of the last two Hard logs and two in the
+    // one before -- the only phase on this list that got worse rather than
+    // better, and the only one whose problem is plainly just volume: 848
+    // bullets on screen at the moment of death, against 131 on Convergence and
+    // 235 on Mitosis. Nothing here arrives from a bad angle and nothing does
+    // anything after launch; there is simply more of it than can be read.
+    //
+    // Alternating costs no layer and no structure. Each reading still appears
+    // as often as before relative to the automaton's own step -- what changes
+    // is that they no longer land on top of each other, which is what turned a
+    // structure into a texture.
+    if (A.L(2) && !(A.L(3) && beat % 3 === 0)) {
       for (let i = 0; i < sier.length; i++) {
         if (!sier[i]) continue;
         A.one({
@@ -200,11 +213,12 @@ function* ruleThirty(A) {
     // The cells are the phase; taking another cut through them is the way to
     // make it denser without asking the player to stop reading and flinch.
     //
-    // Every other beat, not every beat. On every beat it put 1271 bullets on
-    // screen at Hard -- half again as many as anything else in the game -- and
-    // at that point the automaton has stopped being a structure you read and
-    // become a texture you hope to be lucky in.
-    if (A.L(3) && beat % 2 === 0) {
+    // Every third beat -- and on the beats the Sierpinski ring above sits out,
+    // so the two trade places rather than stack. Every other beat was tried
+    // first and moved the phase about a fifth of the way; this is the rest of
+    // it, and it is affordable because the automaton's own step is what carries
+    // the pattern, not how many cuts through it are in the air at once.
+    if (A.L(3) && beat % 3 === 0) {
       for (let i = 0; i < M; i++) {
         if (!cells[i]) continue;
         A.one({
@@ -241,17 +255,18 @@ function* reflection(A) {
     // four; and the lifetime scales with rate, so the count on screen tracks
     // density like everywhere else. Both clamped to ease only: Normal is the
     // reference tuning and Novice's already-generous field is left alone.
-    // 1/1/1/2/2. A second bounce squares the number of reflections you have to
-    // hold in your head, so turning it on at Normal was a step-change in chaos
-    // rather than a gradient. It arrives at Hard, with the rest of the ladder
-    // carried by density and speed.
+    // 1/1/1/1/2. A second bounce squares the number of reflections you have to
+    // hold in your head, so it is a step-change in chaos rather than a
+    // gradient, and Hard is not where a step-change belongs: four deaths in a
+    // logged attempt, every one of them to a ricochet four hundred-odd frames
+    // old. Lunatic keeps it; the rest of the ladder is density and speed.
     //
     // Note it no longer costs anything in DENSITY, only in chaos: lifetime is a
     // range now, so a bullet travels 760px whether it turns once or twice.
     // Giving the low tiers a second bounce for coverage was tried on that basis
     // and changed neither the parking spots nor the hitbox ladder, so the
     // simpler ladder stands.
-    const bounces = A.D.layers >= 3 ? 2 : 1;
+    const bounces = A.D.layers >= 4 ? 2 : 1;
     // Lifetime as RANGE rather than frames. A bouncer is exempt from
     // clampLife -- its lifetime IS its exit -- so `life` alone decides how far
     // it gets, and a flat frame count means slowing the bullets down quietly
@@ -288,20 +303,36 @@ function* reflection(A) {
     // the low tiers use for sloppy aim, and a third of a slot of it closes the
     // lattice statistically rather than by coincidence.
     const spray = () => (A.L(2) ? 0 : A.jit() * 2);
+    // THE FLOOR DOES NOT REFLECT. Three walls do, and the fourth is the one
+    // the player is standing against.
+    //
+    // This is the single change that answers the longest-running complaint in
+    // the run logs -- "relatively fast bullets coming from all directions",
+    // named across four sessions -- and the sweep now has an axis that agrees:
+    // of twenty patterns only this one and Convergence put any of their threat
+    // on a heading that travels UP the screen, and only they score anything on
+    // how much their threat disagrees about where it is going. Everything else
+    // in this game shoots downward, and a player reads downward.
+    //
+    // A ricochet off the floor is the one arrival you cannot watch while also
+    // watching the boss, and the lattice loses nothing by dropping it: the side
+    // walls still fold every ring back through itself, which is the pattern.
+    // What goes away is being shot in the back.
+    const wall = { bounce: bounces, floorBounce: false };
     A.ring({
       n: A.n(10, 9), speed: fast, angle: k * 0.91 + spray(),
-      bounce: bounces, life: range(fast),
+      ...wall, life: range(fast),
     });
     if (A.L(1)) {
       A.ring({
         n: A.n(8, 6), speed: slow, angle: -k * 1.3 + 0.4 + spray(),
-        bounce: bounces, life: range(slow), color: C.magenta, shape: 'hex', r: 5.2,
+        ...wall, life: range(slow), color: C.magenta, shape: 'hex', r: 5.2,
       });
     }
     if (A.L(2)) {
       A.ring({
         n: A.n(6, 3), speed: mid, angle: k * 0.55 + 1.1,
-        bounce: bounces, life: range(mid), color: C.rose, shape: 'diamond', r: 4.8,
+        ...wall, life: range(mid), color: C.rose, shape: 'diamond', r: 4.8,
       });
     }
     // An aimed kunai fan at 4.7px/frame -- the fastest volley in the game --
@@ -318,60 +349,13 @@ function* reflection(A) {
       const wallX = A.px < PLAY.cx ? PLAY.right : PLAY.x;
       A.one({
         angle: Math.atan2(A.py - A.by, wallX - A.bx),
-        speed: A.spd(3.4), bounce: 2, life: 700,
+        speed: A.spd(3.4), bounce: 2, floorBounce: false, life: 700,
         shape: 'star4', color: C.rose, r: 6, spin: 0.1,
       });
     }
     A.sfx('shot', 80);
     k++;
     yield A.w(30);
-  }
-}
-
-// --- Phase 5: Curtain -------------------------------------------------------
-// A near-solid wall of bullets falling from the top with exactly one lane
-// through it, and the lane zig-zags.
-//
-// This one is a PROBE as much as a pattern. It is the extreme case of a design
-// a player described as the most satisfying kind -- the screen full of bullets
-// and the way through still open -- and therefore the sharpest test of whether
-// the difficulty sweep can see such a thing at all. Everything the sweep
-// measures at a point will read as lethal here: almost no room, almost no time,
-// a wall arriving every few frames. The pattern is nonetheless safe, because
-// safety is not at a point, it is along a route.
-//
-// The lane is traversable BY CONSTRUCTION rather than by luck. Rows arrive T
-// frames apart, so the ship has exactly T frames to cover the lane's sideways
-// step between one row and the next; the step is therefore derived from the
-// ship's own focused speed and set to a little under three fifths of that
-// budget, which leaves room to react without leaving room to wander. Because
-// the step is computed from T rather than fixed, this holds at every
-// difficulty: what the harder tiers take away is the width of the lane, not the
-// possibility of being in it.
-function* curtain(A) {
-  A.st({ shape: 'square', color: C.violet, r: 5 });
-  const spacing = 16;                            // px between bullets in a row
-  const cols = Math.round(PLAY.w / spacing) + 1;
-  const amp = 75;                                // px the lane sweeps either way
-  let row = 0;
-  while (true) {
-    const T = A.w(14);
-    const step = Math.max(6, Math.round(PLAYER_SPEED.focus * T * 0.58));
-    const half = Math.max(3, Math.round(amp * 2 / step));
-    const t = row % (half * 2);
-    const laneX = PLAY.cx - amp + (t < half ? t : half * 2 - t) * step;
-    // Only the lane's WIDTH ladders. The curtain either has a hole in it or it
-    // does not, and a curtain you cannot be inside is not a difficulty setting.
-    const gap = A.L(3) ? 20 : A.L(2) ? 24 : A.L(1) ? 28 : 34;
-
-    for (let i = 0; i < cols; i++) {
-      const bx = PLAY.x + i * spacing;
-      if (Math.abs(bx - laneX) < gap) continue;
-      A.one({ x: bx, y: PLAY.y - 14, angle: HALF_PI, speed: A.spd(2.2) });
-    }
-    A.sfx('shot', 90);
-    row++;
-    yield T;
   }
 }
 
@@ -389,6 +373,5 @@ export const BOSS_WEAVER = {
     { name: 'Moire',        hp: 9600, time: 52 * 60, script: moire,      move: moveStatic },
     { name: 'Rule Thirty',  hp: 10500, time: 55 * 60, script: ruleThirty, move: moveWide },
     { name: 'Reflection',   hp: 11200, time: 58 * 60, script: reflection, move: moveSway },
-    { name: 'Curtain',      hp: 11800, time: 55 * 60, script: curtain,    move: moveStatic },
   ],
 };

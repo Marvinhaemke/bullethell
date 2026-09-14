@@ -89,6 +89,13 @@ export class Bullet {
     // that has used them up is indistinguishable from one that never bounced
     // -- which made the death log file Reflection's ricochets as "straight".
     this.bounced = 0;
+    // Whether the FLOOR reflects. The other three walls always do; this one is
+    // a choice, because the floor is the wall the player is standing against.
+    // A bullet that ricochets off it arrives from below and from behind, which
+    // is the one direction nothing else in this game shoots from and the one a
+    // player cannot watch while also watching the boss. Default on, so a
+    // bouncer is a bouncer unless a pattern says otherwise.
+    this.floorBounce = true;
 
     // Recursive splitting.
     this.splitT = 0; this.splitGen = 0; this.split = null;
@@ -265,7 +272,9 @@ export class BulletPool {
           if (b.x < PLAY.x + b.r && b.vx < 0) { b.vx = -b.vx; b.x = PLAY.x + b.r; b.bounce--; b.bounced++; }
           else if (b.x > PLAY.right - b.r && b.vx > 0) { b.vx = -b.vx; b.x = PLAY.right - b.r; b.bounce--; b.bounced++; }
           if (b.y < PLAY.y + b.r && b.vy < 0) { b.vy = -b.vy; b.y = PLAY.y + b.r; b.bounce--; b.bounced++; }
-          else if (b.y > PLAY.bottom - b.r && b.vy > 0) { b.vy = -b.vy; b.y = PLAY.bottom - b.r; b.bounce--; b.bounced++; }
+          else if (b.floorBounce && b.y > PLAY.bottom - b.r && b.vy > 0) {
+            b.vy = -b.vy; b.y = PLAY.bottom - b.r; b.bounce--; b.bounced++;
+          }
         }
       }
 

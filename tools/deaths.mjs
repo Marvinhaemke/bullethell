@@ -38,6 +38,13 @@ import { readFileSync, existsSync } from 'node:fs';
  *   1.5 to 2    very hard, and one per boss is acceptable late in the run
  *   2 to 3      too hard here; this is what the NEXT tier up should look like
  *   over 3      not a difficulty, a wall: bad design, or two tiers misplaced
+ *
+ * IT IS A BAND FOR HARD, and only for Hard. The player who gave it said so
+ * plainly when a Normal log was scored against it and came back full of zeroes:
+ * "Normal should read below my band. It would be very weird if normal was just
+ * as difficulty as Hard. The band I defined is only for Hard at my current
+ * skill level." So a Normal log sitting under the band is the ladder working,
+ * not a fault to fix, and this tool says which tier it is scoring.
  */
 const BANDS = [
   { max: 0.5, key: 'easy', label: 'too easy' },
@@ -49,13 +56,19 @@ const BANDS = [
 function verdict(dpa) { return BANDS.find((b) => dpa < b.max); }
 
 function banding(rows) {
+  const tiers = [...new Set(rows.map((r) => r.diff))];
   const by = new Map(BANDS.map((b) => [b.key, []]));
   for (const r of rows) by.get(verdict(r.deaths / r.tries).key).push(r);
   const dpa = rows.map((r) => r.deaths / r.tries).sort((a, b) => a - b);
   const med = dpa.length % 2 ? dpa[(dpa.length - 1) / 2]
     : (dpa[dpa.length / 2 - 1] + dpa[dpa.length / 2]) / 2;
 
-  console.log('\nAgainst the target band:');
+  const scope = tiers.length === 1 ? tiers[0].toUpperCase() : tiers.join(' + ').toUpperCase();
+  console.log(`\nAgainst the target band (${scope}):`);
+  if (!tiers.includes('hard')) {
+    console.log('  NOTE: the band is a HARD-tier calibration. A lower tier is');
+    console.log('  SUPPOSED to sit under it -- that is the ladder, not a fault.');
+  }
   for (const b of BANDS) {
     const n = by.get(b.key).length;
     console.log(`  ${b.label.padEnd(34)} ${String(n).padStart(3)}  ` + '#'.repeat(n));

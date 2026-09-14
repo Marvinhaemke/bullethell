@@ -69,8 +69,13 @@ not exist on Normal, so the fights differ in structure, not only in numbers.
 | Novice | ×0.72 | ×0.55 | ×1.50 | 0 | loose |
 | Easy | ×0.86 | ×0.76 | ×1.22 | 1 | loose |
 | Normal | ×1.00 | ×1.00 | ×1.00 | 2 | fair |
-| Hard | ×1.14 | ×1.32 | ×0.84 | 3 | leading |
-| Lunatic | ×1.30 | ×1.70 | ×0.70 | 4 | perfect, leading |
+| Hard | ×1.07 | ×1.16 | ×0.91 | 3 | leading |
+| Lunatic | ×1.20 | ×1.46 | ×0.79 | 4 | perfect, leading |
+
+The top two tiers are deliberately **compressed** rather than stepping in even
+ratio. Difficulty is badly superlinear in these knobs: at the old ×1.32 density
+and ×1.14 speed, the Normal→Hard step was multiplying a logged player's deaths
+by roughly four, spanning the whole of the target band and overshooting it.
 
 **Three life modes**, granted *per boss* so every fight starts on equal footing:
 Infinite (deaths cost score only), 3 Lives, and 1 Life.
@@ -107,8 +112,9 @@ orbiting satellite emitters whose overlapping sprays produce a live moiré field
 a ring of cells running **elementary cellular automaton rule 30**, whose live
 cells become bullets, so the volley is deterministic but never repeats (rule 90
 rides underneath at higher difficulties, laying clean Sierpiński triangles over
-the chaos); and finally bullets that ricochet off the walls into a standing
-lattice.
+the chaos); and finally bullets that ricochet into a standing lattice off three
+of the four walls — the floor does not reflect, because the floor is the wall
+the player is standing against.
 
 ![Maelstrom](docs/maelstrom.png)
 
@@ -338,8 +344,11 @@ whole class of pattern. The clearest case is a **curtain** — rows of bullets
 sweeping down with a gap that slides sideways from row to row. Freeze any frame
 and the rows are a grid whose gaps do not line up vertically, so the only way
 through is a squeeze between two rows. That is what the lane measure reports for
-Weaver's Curtain: **3.8px of bottleneck at Novice falling to 0.0 at Lunatic**,
-tighter than anything else in the game.
+Weaver's Curtain — a probe pattern built to find exactly this: **3.8px of
+bottleneck at Novice falling to 0.0 at Lunatic**, tighter than anything else in
+the game. The Curtain has since been removed at the player's request; it did its
+job as an instrument and was never much of a fight. The blind spot it found was
+real, and this is the measure that closes it.
 
 Played, nobody goes through the rows. You *ride* the gap: stand still, let a row
 pass, slide sideways into the next gap as it arrives. A lane-follower written to
@@ -351,7 +360,7 @@ So `stroom` asks over **(x, y, t)**: what is the largest clearance a player
 could *hold throughout* the next 48 frames? A max-min dynamic program, one cell
 of movement per step, run forward on what the bullets really did.
 
-| Weaver's Curtain | NOV | EASY | NORM | HARD | LUN |
+| Weaver's Curtain (since removed) | NOV | EASY | NORM | HARD | LUN |
 | --- | --- | --- | --- | --- | --- |
 | one frame (`laneW`) | 3.8px | 2.9px | 0.9px | 1.0px | 0.0px |
 | space-time (`stroom`) | 24px | 24px | 22.5px | 22.3px | 21.1px |
@@ -365,11 +374,11 @@ reach the lane, and would have to do it again every window, forever. **Riding a
 lane is a commitment, and the room is only there for someone already in it.** So
 the frontier carries over between windows; only the value resets.
 
-**What it says, across all twenty-one phases at five tiers:** `stroom` sits at
-its 24px cap in every cell but three, and those three are the Curtain. Read
-plainly — *nothing in this game denies a player room*, and the pattern that
-comes closest is the one the single-frame measure called impossible. That is a
-floor check passing, which is what it is for. It should report nothing, like
+**What it said, across all twenty-one phases at five tiers:** `stroom` sat at
+its 24px cap in every cell but three, and those three were the Curtain. Read
+plainly — *nothing in this game denies a player room*, and the pattern that came
+closest was the one the single-frame measure called impossible. That is a floor
+check passing, which is what it is for. It should report nothing, like
 `npm run deadzones`, and it will fire the day a pattern is built with genuinely
 nowhere to be.
 
@@ -459,14 +468,57 @@ motionless configuration to read and a visible wind-up before anything moves. A
 trajectory that changes is fine; a trajectory that changes *while you are trying
 to read it* is not.
 
-So when a pattern has to come down, the levers in order:
+### Everything shoots downward
+
+The longest-running complaint in four run logs was never about how much or how
+fast. It was about **where from**:
+
+> The main problem of relatively fast bullets coming from all directions
+> persists. In other levels there may be more and even faster bullets, but at
+> least they all come from the top or at a top angle and not from all directions
+> at once.
+
+That is a statement about **attention**, not about room. The boss is at the top,
+so that is where a player is looking; a pattern that also shoots from behind them
+asks them to watch two places at once, and no amount of clearance makes that
+readable. It is the same class of problem as an aimed volley — a demand that
+cannot be answered by learning the pattern — and it deserves the same treatment.
+
+The sweep measures it now, as `rise` (share of the threat headed *up* the
+screen, speed-weighted) and `spread` (how much the threat disagrees about its
+heading). They separate the game in one cut. At Hard, eighteen of twenty
+patterns score `rise` 0% and `spread` 1–8% — everything in this game shoots
+downward, because that is what a boss at the top of the screen does. The two
+that did not were the two the player had been naming for four sessions:
+
+| | `rise` | `spread` | why |
+| --- | --- | --- | --- |
+| Reflection | 16% | 43% | ricochets off all four walls |
+| Convergence | 7% | 34% | spawned on the whole perimeter |
+
+Both are fixed at the source rather than tuned down. **Reflection's floor stops
+reflecting** — the other three walls still fold every ring back through itself,
+which is the pattern; what goes away is being shot in the back by a ricochet you
+cannot watch while also watching the boss. **Convergence closes in from the top
+edge and the upper sides** instead of the full circle; a ring closing from up
+there is still a ring closing on you, and the wave still arrives as one object.
+Both now read `rise` 0%, `spread` 11%.
+
+These two are a **check, not a difficulty term**. They are meant to read near
+zero, and a phase that lights up is not necessarily hard — it is making a demand
+this game has decided not to make.
+
+### The levers, in order
+
+So when a pattern has to come down:
 
 1. **Top speed**, first and always.
 2. **Whether the path changes after launch** — and if it must, announce it.
-3. **Aiming** (see below).
-4. **Count**, last.
+3. **Where it comes from** — if it is not the top, that is the fix.
+4. **Aiming** (see below).
+5. **Count**, last.
 
-The first three cost readability; only the fourth costs room. Room is the thing a
+The first four cost readability; only the last costs room. Room is the thing a
 player can solve, so it is the last thing to take away — and often the right way
 to spend what the first three give back. That is the trade the aimed volleys were
 removed on, and it is why Loom at Lunatic and Reflection got the removal with
