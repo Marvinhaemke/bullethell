@@ -5,6 +5,7 @@
 import { TAU, PI, HALF_PI } from '../mathx.js';
 import { C, PLAY } from '../config.js';
 import { moveSway, moveWide, moveStatic, caStep, caSeed } from '../patterns.js';
+import { PLAYER_SPEED } from '../player.js';
 
 // --- Phase 1: Loom ----------------------------------------------------------
 // Ranks of bullets sweep in from alternating edges, each with a gap. Two
@@ -327,6 +328,53 @@ function* reflection(A) {
   }
 }
 
+// --- Phase 5: Curtain -------------------------------------------------------
+// A near-solid wall of bullets falling from the top with exactly one lane
+// through it, and the lane zig-zags.
+//
+// This one is a PROBE as much as a pattern. It is the extreme case of a design
+// a player described as the most satisfying kind -- the screen full of bullets
+// and the way through still open -- and therefore the sharpest test of whether
+// the difficulty sweep can see such a thing at all. Everything the sweep
+// measures at a point will read as lethal here: almost no room, almost no time,
+// a wall arriving every few frames. The pattern is nonetheless safe, because
+// safety is not at a point, it is along a route.
+//
+// The lane is traversable BY CONSTRUCTION rather than by luck. Rows arrive T
+// frames apart, so the ship has exactly T frames to cover the lane's sideways
+// step between one row and the next; the step is therefore derived from the
+// ship's own focused speed and set to a little under three fifths of that
+// budget, which leaves room to react without leaving room to wander. Because
+// the step is computed from T rather than fixed, this holds at every
+// difficulty: what the harder tiers take away is the width of the lane, not the
+// possibility of being in it.
+function* curtain(A) {
+  A.st({ shape: 'square', color: C.violet, r: 5 });
+  const spacing = 16;                            // px between bullets in a row
+  const cols = Math.round(PLAY.w / spacing) + 1;
+  const amp = 75;                                // px the lane sweeps either way
+  let row = 0;
+  while (true) {
+    const T = A.w(14);
+    const step = Math.max(6, Math.round(PLAYER_SPEED.focus * T * 0.58));
+    const half = Math.max(3, Math.round(amp * 2 / step));
+    const t = row % (half * 2);
+    const laneX = PLAY.cx - amp + (t < half ? t : half * 2 - t) * step;
+    // Only the lane's WIDTH ladders. The curtain either has a hole in it or it
+    // does not, and a curtain you cannot be inside is not a difficulty setting.
+    const gap = A.L(3) ? 20 : A.L(2) ? 24 : A.L(1) ? 28 : 34;
+
+    for (let i = 0; i < cols; i++) {
+      const bx = PLAY.x + i * spacing;
+      if (Math.abs(bx - laneX) < gap) continue;
+      A.one({ x: bx, y: PLAY.y - 14, angle: HALF_PI, speed: A.spd(2.2) });
+    }
+    A.sfx('shot', 90);
+    row++;
+    yield T;
+  }
+}
+
 export const BOSS_WEAVER = {
   id: 'weaver',
   name: 'WEAVER',
@@ -341,5 +389,6 @@ export const BOSS_WEAVER = {
     { name: 'Moire',        hp: 9600, time: 52 * 60, script: moire,      move: moveStatic },
     { name: 'Rule Thirty',  hp: 10500, time: 55 * 60, script: ruleThirty, move: moveWide },
     { name: 'Reflection',   hp: 11200, time: 58 * 60, script: reflection, move: moveSway },
+    { name: 'Curtain',      hp: 11800, time: 55 * 60, script: curtain,    move: moveStatic },
   ],
 };
