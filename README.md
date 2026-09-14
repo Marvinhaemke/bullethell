@@ -211,6 +211,7 @@ problem, not a prediction one, and it lands on a different axis.
 | `warn` | reading time: how old a bullet was, in frames, the first time it came within 60px. 10th percentile again. |
 | `flux` | bullets newly entering the planning radius per second. Reported, not scored. |
 | `aimRate` | aimed launches per second — the same events as `aimed`, counted absolutely. Reported, not scored. |
+| `stroom` | clearance a player could *hold throughout* a 48-frame window, over (x, y, t). A floor check, not a ranking — see below. |
 
 They compose without fudge factors, because they are all in the same units.
 `tight - drift` is the gap you can actually count on, since drift is by
@@ -329,6 +330,66 @@ logs and inverts on Normal, so it is not stable enough to reweight on — every
 `--aim-cost` from 0.5 to 2.0 was tried and none wins across all three. Both are
 the same statement twice: **a bullet that does something after launch you did
 not read**, which is exactly what the design principle above says to avoid.
+
+### Space and time: what one frame cannot show
+
+Every axis above, lanes included, reads a **single frame**, and that misses a
+whole class of pattern. The clearest case is a **curtain** — rows of bullets
+sweeping down with a gap that slides sideways from row to row. Freeze any frame
+and the rows are a grid whose gaps do not line up vertically, so the only way
+through is a squeeze between two rows. That is what the lane measure reports for
+Weaver's Curtain: **3.8px of bottleneck at Novice falling to 0.0 at Lunatic**,
+tighter than anything else in the game.
+
+Played, nobody goes through the rows. You *ride* the gap: stand still, let a row
+pass, slide sideways into the next gap as it arrives. A lane-follower written to
+check clears the phase for fifty seconds at every tier including Lunatic. The
+room is real, there is plenty of it, and none of it exists on any single frame —
+it exists in the sequence.
+
+So `stroom` asks over **(x, y, t)**: what is the largest clearance a player
+could *hold throughout* the next 48 frames? A max-min dynamic program, one cell
+of movement per step, run forward on what the bullets really did.
+
+| Weaver's Curtain | NOV | EASY | NORM | HARD | LUN |
+| --- | --- | --- | --- | --- | --- |
+| one frame (`laneW`) | 3.8px | 2.9px | 0.9px | 1.0px | 0.0px |
+| space-time (`stroom`) | 24px | 24px | 22.5px | 22.3px | 21.1px |
+
+**The player has to be persistent**, and that took a wrong answer to learn. The
+first version restarted the search from a fixed sample point every window — the
+same fixed-point discipline the lane axes use, adopted for the same good reason
+— and scored the Curtain *worse* than the snapshot did, 4px at every tier. It
+was right to: a player parachuted onto a sample point has to cross the rows to
+reach the lane, and would have to do it again every window, forever. **Riding a
+lane is a commitment, and the room is only there for someone already in it.** So
+the frontier carries over between windows; only the value resets.
+
+**What it says, across all twenty-one phases at five tiers:** `stroom` sits at
+its 24px cap in every cell but three, and those three are the Curtain. Read
+plainly — *nothing in this game denies a player room*, and the pattern that
+comes closest is the one the single-frame measure called impossible. That is a
+floor check passing, which is what it is for. It should report nothing, like
+`npm run deadzones`, and it will fire the day a pattern is built with genuinely
+nowhere to be.
+
+**What was tried and dropped: a reader.** `stroom` is prescient — the trajectory
+is chosen in hindsight — so a second player was built to be the honest half: at
+each window it extrapolated the bullets it could see along straight lines,
+solved the same program on that imagined field, and flew the plan through what
+really happened. It is gone, because its trace shows it measuring itself. On the
+Curtain at Hard it wanders out of the lane during the opening seconds — while
+the screen is still filling from the top and every direction reads safe — and
+corners itself bottom-left, where the lane is eighteen cells away and its
+horizon is sixteen. Every plan from there scores an identical **1.4px**, so the
+max-min objective is flat, so it never moves again: 1.4px for the remaining
+nineteen windows against the 22px the pattern actually affords. Replanning more
+often makes it *worse*, because each fresh plan ratchets it further out.
+
+A better one is a research problem, not a parameter — it needs the thing a
+player has and this does not, knowledge of where a pattern *puts* bullets rather
+than only where they are. `drift` already measures the read-failure dimension,
+at frame level and without an agent.
 
 ### What a flat ladder costs the measurement
 
