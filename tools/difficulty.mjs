@@ -73,6 +73,18 @@
 //           or it is noise, and a term that sounds right is not a reason to
 //           keep one the data does not support. It stays because it is cheap
 //           and it is the axis to look at first when a phase reads as chaotic.
+//   lanes   how many distinct directions have a viable route out to 200px.
+//   laneW   the narrowest squeeze on the best of those routes, in px.
+//   laneLife how long a way out keeps existing, in frames.
+//
+//           These three describe the SHAPE of the free space, which no other
+//           axis here can see: every one of the others is a scalar at a point.
+//           Bullets scattered evenly and bullets packed into walls with a
+//           corridor between them report the same room, the same flux and the
+//           same react, and play nothing alike.
+//
+//           They do not predict deaths, and that is a finding rather than a
+//           disappointment -- see LANES, BELOW.
 //
 // COMBINING THEM
 //
@@ -103,6 +115,52 @@
 //
 // Lower safety = harder. The number is in pixels and is meant to be compared
 // between phases and down a difficulty column, not read as an absolute.
+//
+// LANES, AND A HYPOTHESIS THAT DID NOT SURVIVE
+//
+// A player proposed that the missing axis was lane forming: a route you are
+// pushed into or choose, not too dense, hard to leave, where "the screen can be
+// full of bullets but the lane is still open enough for a human to dodge". The
+// prediction was that the phases built that way would be the ones that kill
+// least. It was tested twice and it is false both times.
+//
+// The first attempt cast rays from a sample point and looked for deep clear
+// arcs. That measured EMPTINESS, not corridors -- a corridor that bends is
+// invisible to a straight ray, and a lane that did not bend would not need
+// choosing. Its three axes scored 0.00, 0.03 and -0.15 against the log.
+//
+// The second attempt is the one in the code: rasterise the free space, stamp a
+// clearance field, and run a max-min search for the widest bottleneck on any
+// route out. That is a correct measurement of corridor structure -- it agrees
+// with the eye, giving Rose Curve two routes through a 9px squeeze and
+// Convergence six through a 29px one. It also does not predict deaths: lanes
+// +0.21, laneW +0.12, laneLife -0.10, with the two strongest pointing the WRONG
+// WAY. More routes and wider bottlenecks go with more deaths, not fewer.
+//
+// The reason is visible once the numbers are in front of you. Lane quality is
+// close to a measure of how open the field is, and in this game the lethal
+// phases are the sparse fast ones, not the dense ones. Convergence -- six
+// deaths an attempt, the worst in the game -- has the best lane structure of
+// any phase, because it kills with speed across an empty screen.
+//
+// WHAT THE LANES DO TRACK IS TASTE, which is what the player was actually
+// describing. Sort the phases by what they said they liked:
+//
+//   praised   Phyllotaxis 1 route / 6.8px, Rose Curve 2 / 9.0, Delayed 4 / 20.6
+//   disliked  Convergence 6 / 29.4, Lissajous 5 / 10.9, Curveshot 5 / 12.5
+//
+// Few, tight routes is the maze feeling they called satisfying. Many wide ones
+// is an open field, which they did not. So these axes belong in the toolkit as
+// a design-intent readout -- what KIND of phase did I just build -- and not in
+// the difficulty number. Deaths are governed by something else entirely.
+//
+// WHAT THAT SOMETHING ELSE IS, on the evidence of three logs: `drift` is the
+// only axis whose sign is right on all three (-0.264, -0.339, -0.122). `aimed`
+// is much stronger on the two Hard logs (-0.466, -0.347) and inverts on Normal,
+// so it is not stable enough to reweight on -- every AIM_COST from 0.5 to 2.0
+// was tried and none wins across all three. Both of those are the same thing
+// said twice: a bullet that does something after launch you did not read. Which
+// is exactly what the README's design principle already says to avoid.
 //
 // WHAT IT DOES NOT SEE
 //
@@ -201,6 +259,65 @@ await page.evaluate(() => {
   const NEAR = 190;
   const AIM_TOL = Math.cos(8 * Math.PI / 180);
 
+  // ---- lanes -------------------------------------------------------------
+  //
+  // Every other axis here is a SCALAR AT A POINT -- clearance to the nearest
+  // bullet, time until the most urgent one arrives, how long it existed first.
+  // None of them can see the shape of the free space, and the shape is what a
+  // player is actually reading. Bullets scattered evenly and bullets packed
+  // into walls with a corridor winding between them can report the same `room`,
+  // the same `flux` and the same `react`, and play nothing alike: in one every
+  // direction is equally bad, in the other there is a route, and following it
+  // is the whole pleasure. That difference is a phase feeling dense-but-fair
+  // rather than dense-and-random, and it is the standing explanation for why
+  // this tool keeps flagging Loom and Maelstrom that the player clears without
+  // dying. The room really is tight. The way through is a corridor.
+  //
+  // Measured as CONNECTIVITY, not as sight-lines. Ray-casting was tried first
+  // and is recorded here because it is the obvious cheap proxy and it does not
+  // work: a corridor that bends is invisible to a straight ray, and a lane that
+  // did not bend would not need choosing. What that version actually measured
+  // was emptiness, so it ranked Convergence -- a sparse phase that kills with
+  // speed, six deaths an attempt -- as the roomiest lanes in the game, and Rose
+  // Curve -- a thousand bullets on screen and no deaths at all -- as the
+  // narrowest. Against the log its three axes scored 0.00, 0.03 and -0.15.
+  //
+  // So: rasterise the free space, then ask for the WIDEST BOTTLENECK on any
+  // route out. Stamp each bullet into a clearance grid, then run a max-min
+  // search (Dijkstra on "maximise the narrowest cell you pass through") from
+  // the sample point outwards. The answer is the width of the tightest squeeze
+  // on the best route available -- which is exactly the thing a player means by
+  // a lane being open enough, and it is orthogonal to how full the screen is.
+  const LANE_CELL = 12;                 // px per grid cell
+  const LANE_PAD = 4;                   // px of shoulder past the ship's radius
+  const LANE_CLEAR_CAP = 48;            // px; wider than this we stop measuring
+  const LANE_OUT = 200;                 // px a route has to reach to count as out
+  const LANE_EVERY = 10;                // sample every Nth frame
+  // The playfield is read off the game rather than restated, so this grid
+  // cannot quietly stop covering it if the layout changes -- but there is no
+  // boss to ask at setup time, so the grid is built on first use instead.
+  let PLAY = null, LANE_COLS = 0, LANE_ROWS = 0;
+  let laneClear = null, laneBest = null, laneSeen = null;
+  const laneInit = () => {
+    if (PLAY) return;
+    PLAY = g.boss.attack.pf;
+    LANE_COLS = Math.ceil(PLAY.w / LANE_CELL);
+    LANE_ROWS = Math.ceil(PLAY.h / LANE_CELL);
+    const n = LANE_COLS * LANE_ROWS;
+    laneClear = new Float32Array(n);
+    laneBest = new Float32Array(n);
+    laneSeen = new Int32Array(n);
+  };
+
+  // Sampled at fixed points rather than wherever the bot drifted to. The axes
+  // that follow the bot have produced three separate artifacts in this tool
+  // already, all of them the bot's position leaking into a number that was
+  // supposed to describe the pattern. Lane structure is a property of the
+  // field, so it gets measured at the same places every time.
+  const LANE_SPOTS = [[200, 600], [356, 600], [512, 600], [356, 470]];
+
+  let laneStamp = 0;
+
   window.__DIFF = function measure(bi, phi, di, frames, horizon, seed) {
     g.settings.autopilot = true;
     g.settings.autofire = true;
@@ -209,6 +326,7 @@ await page.evaluate(() => {
     g.boss.state = 'fight';
     g.boss.startPhase(phi);
     g.boss.hp = g.boss.hpMax = 1e9;
+    laneInit();
 
     const p = g.player;
     p.x = 160 + (seed % 3) * 180;
@@ -217,6 +335,90 @@ await page.evaluate(() => {
     const rooms = [];
     const drifts = [];
     const reacts = [];
+    const laneCounts = [];   // openings visible from a sample point
+    const laneWidths = [];   // px across the widest one
+    const laneLives = [];    // frames an opening lasted before it closed
+    // One entry per sample spot, holding how long a way out has existed there.
+    const laneAlive = LANE_SPOTS.map(() => ({ age: 0 }));
+
+    /** Clearance from every cell centre to the nearest bullet surface, capped. */
+    const laneField = (pool, hitR) => {
+      laneClear.fill(LANE_CLEAR_CAP);
+      const span = Math.ceil((LANE_CLEAR_CAP + 12) / LANE_CELL);
+      for (let j = 0; j < pool.n; j++) {
+        const b = pool.a[j];
+        if (b.harmless) continue;
+        const r = b.hr + hitR + LANE_PAD;
+        const cx = (b.x - PLAY.x) / LANE_CELL, cy = (b.y - PLAY.y) / LANE_CELL;
+        const i0 = Math.max(0, Math.floor(cx) - span), i1 = Math.min(LANE_COLS - 1, Math.ceil(cx) + span);
+        const j0 = Math.max(0, Math.floor(cy) - span), j1 = Math.min(LANE_ROWS - 1, Math.ceil(cy) + span);
+        for (let gy = j0; gy <= j1; gy++) {
+          const py = PLAY.y + (gy + 0.5) * LANE_CELL - b.y;
+          for (let gx = i0; gx <= i1; gx++) {
+            const px2 = PLAY.x + (gx + 0.5) * LANE_CELL - b.x;
+            const c = Math.sqrt(px2 * px2 + py * py) - r;
+            const k = gy * LANE_COLS + gx;
+            if (c < laneClear[k]) laneClear[k] = c;
+          }
+        }
+      }
+    };
+
+    /**
+     * The widest bottleneck on any route from (sx, sy) out to LANE_OUT away,
+     * and how many distinct bearings such a route reaches.
+     *
+     * Max-min Dijkstra: the value of a cell is the narrowest clearance on the
+     * best path to it, and we always expand the most generous frontier cell
+     * first. Clearance is bucketed to the nearest pixel so the queue is an
+     * array of buckets rather than a heap -- linear, and the whole grid is
+     * three thousand cells.
+     */
+    const laneRoutes = (sx, sy) => {
+      const sgx = Math.min(LANE_COLS - 1, Math.max(0, Math.floor((sx - PLAY.x) / LANE_CELL)));
+      const sgy = Math.min(LANE_ROWS - 1, Math.max(0, Math.floor((sy - PLAY.y) / LANE_CELL)));
+      laneStamp++;
+      const buckets = [];
+      for (let i = 0; i <= LANE_CLEAR_CAP; i++) buckets.push([]);
+      const push = (k, v) => {
+        const b = Math.max(0, Math.min(LANE_CLEAR_CAP, Math.round(v)));
+        laneBest[k] = v; laneSeen[k] = laneStamp; buckets[b].push(k);
+      };
+      const start = sgy * LANE_COLS + sgx;
+      push(start, laneClear[start]);
+      let best = 0;
+      const bearings = [];
+      for (let b = LANE_CLEAR_CAP; b >= 0; b--) {
+        while (buckets[b].length) {
+          const k = buckets[b].pop();
+          const v = laneBest[k];
+          if (Math.round(Math.max(0, Math.min(LANE_CLEAR_CAP, v))) !== b) continue;
+          const gx = k % LANE_COLS, gy = (k / LANE_COLS) | 0;
+          const dx = (gx - sgx) * LANE_CELL, dy = (gy - sgy) * LANE_CELL;
+          if (dx * dx + dy * dy >= LANE_OUT * LANE_OUT) {
+            if (v > best) best = v;
+            // Only routes worth taking count as choices: a squeeze narrower
+            // than the ship plus a little is not an option, it is a death.
+            if (v >= 6) bearings.push(Math.atan2(dy, dx));
+            continue;                   // reaching "out" ends this route
+          }
+          for (let d = 0; d < 4; d++) {
+            const nx = gx + (d === 0 ? 1 : d === 1 ? -1 : 0);
+            const ny = gy + (d === 2 ? 1 : d === 3 ? -1 : 0);
+            if (nx < 0 || ny < 0 || nx >= LANE_COLS || ny >= LANE_ROWS) continue;
+            const nk = ny * LANE_COLS + nx;
+            const nv = Math.min(v, laneClear[nk]);
+            if (nv <= 0) continue;
+            if (laneSeen[nk] === laneStamp && laneBest[nk] >= nv) continue;
+            push(nk, nv);
+          }
+        }
+      }
+      // Distinct escapes, as 60-degree sectors of the bearings that got out.
+      const sect = new Set();
+      for (const a of bearings) sect.add(Math.floor((a + Math.PI) / (Math.PI / 3)));
+      return { width: best, routes: sect.size };
+    };
     let aimedHits = 0;
     let aimedSeen = 0;
     // Bullets newly entering the planning radius, counted once each. This is
@@ -365,7 +567,22 @@ await page.evaluate(() => {
         if (predicted < 1e9) drifts.push(Math.max(0, predicted - actual));
       }
       ring[f % horizon] = nearNow;
+
+      if (f % LANE_EVERY === 0) {
+        laneField(pool, p.hitR);
+        for (let s = 0; s < LANE_SPOTS.length; s++) {
+          const r = laneRoutes(LANE_SPOTS[s][0], LANE_SPOTS[s][1]);
+          laneCounts.push(r.routes);
+          laneWidths.push(r.width);
+          // How long a way out keeps existing. A phase that opens and shuts
+          // every few frames is passable on any given frame and unreadable
+          // over any stretch of them.
+          if (r.routes > 0) laneAlive[s].age += LANE_EVERY;
+          else if (laneAlive[s].age > 0) { laneLives.push(laneAlive[s].age); laneAlive[s].age = 0; }
+        }
+      }
     }
+    for (const a of laneAlive) if (a.age > 0) laneLives.push(a.age);
 
     const p10 = (a) => {
       if (!a.length) return null;
@@ -382,6 +599,9 @@ await page.evaluate(() => {
       // the whole window, which is the safest a phase can be and not, as an
       // empty-sample zero would have said, the most dangerous.
       warn: warns.length ? p10(warns) : 999,
+      lanes: median(laneCounts),
+      laneW: median(laneWidths),
+      laneLife: median(laneLives),
       aimed: aimedSeen ? aimedHits / aimedSeen : 0,
       aimRate: (aimedHits * 60) / frames,
       samples: { rooms: rooms.length, drifts: drifts.length, reacts: reacts.length },
@@ -475,6 +695,7 @@ async function measure(b, ph, d) {
   return {
     room: avg('room'), tight: avg('tight'), flux: avg('flux'),
     drift: avg('drift'), react: avg('react'), warn: avg('warn'),
+    lanes: avg('lanes'), laneW: avg('laneW'), laneLife: avg('laneLife'),
     aimed: avg('aimed'), aimRate: avg('aimRate'),
   };
 }
@@ -505,8 +726,8 @@ if (DETAIL) {
   const b = ONLY_BOSS === null ? 4 : ONLY_BOSS;
   const ph = ONLY_PHASE === null ? 0 : ONLY_PHASE;
   console.log(`${roster[b].name}  ${ph + 1}. ${roster[b].phases[ph]}\n`);
-  console.log('DIFFICULTY     room    tight    drift    react     warn    aimed  aim/sec     flux   clearance    reach   SAFETY');
-  console.log('-'.repeat(117));
+  console.log('DIFFICULTY     room    tight    drift    react     warn    aimed  aim/sec     flux   clearance    reach   SAFETY  |  routes   lane   hold');
+  console.log('-'.repeat(146));
   for (let d = 0; d < 5; d++) {
     const m = await measure(b, ph, d);
     const clearance = Math.max(1, m.tight - m.drift);
@@ -523,7 +744,9 @@ if (DETAIL) {
       `${m.flux.toFixed(1)}/s`.padStart(9) +
       `${clearance.toFixed(1)}px`.padStart(12) +
       `${reach.toFixed(1)}px`.padStart(9) +
-      `${safety(m).toFixed(1)}px`.padStart(9));
+      `${safety(m).toFixed(1)}px`.padStart(9) +
+      '  |' + `${m.lanes.toFixed(1)}`.padStart(8) +
+      `${m.laneW.toFixed(1)}px`.padStart(7) + `${m.laneLife.toFixed(0)}f`.padStart(7));
   }
 } else {
   console.log('BOSS          PHASE                       ' +

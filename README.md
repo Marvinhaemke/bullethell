@@ -286,6 +286,50 @@ Two things it took a rewrite to get right, both worth not repeating:
   tier reading as the least warning in the phase, because the bot had room to
   sit against a side edge where the horizontal ranks enter beside it.
 
+### Lanes: a hypothesis that did not survive
+
+A player proposed the missing axis was **lane forming** — a route you are pushed
+into or choose, not too dense, hard to leave, where *"the screen can be full of
+bullets but the lane is still open enough for a human to dodge"*. The prediction
+was that phases built that way would be the ones that kill least.
+
+It is measured now — `lanes`, `laneW`, `laneLife` in `--detail` — and the
+prediction is **false**. The first implementation cast rays and measured
+emptiness rather than corridors, which is its own lesson: *a corridor that bends
+is invisible to a straight ray, and a lane that did not bend would not need
+choosing*. The second rasterises the free space and runs a max-min search for
+the widest bottleneck on any route out. That one is correct — it gives Rose
+Curve two routes through a 9px squeeze and Convergence six through a 29px one,
+which is what the eye sees — and it still does not predict deaths: **+0.21,
++0.12, −0.10**, with the two strongest pointing the *wrong way*.
+
+The reason is visible once the numbers are up. Lane quality is close to a
+measure of how open the field is, and the lethal phases here are the sparse fast
+ones, not the dense ones. Convergence has the best lane structure in the game
+and the worst death rate, because it kills with speed across an empty screen.
+
+**What the lanes do track is taste**, which is what the player was describing:
+
+| | routes | bottleneck |
+| --- | --- | --- |
+| *praised* — Phyllotaxis | 1 | 6.8px |
+| *praised* — Rose Curve | 2 | 9.0px |
+| *praised* — Delayed Theorem | 4 | 20.6px |
+| *disliked* — Convergence | 6 | 29.4px |
+| *disliked* — Lissajous Choir | 5 | 10.9px |
+| *disliked* — Curveshot | 5 | 12.5px |
+
+Few tight routes is the maze feeling that got called satisfying; many wide ones
+is an open field, which did not. So these axes are a **design-intent readout** —
+what *kind* of phase did I just build — and not a difficulty term.
+
+On the evidence of three logs, the thing that does govern deaths is `drift`: the
+only axis whose sign is right on all three. `aimed` is stronger on the two Hard
+logs and inverts on Normal, so it is not stable enough to reweight on — every
+`--aim-cost` from 0.5 to 2.0 was tried and none wins across all three. Both are
+the same statement twice: **a bullet that does something after launch you did
+not read**, which is exactly what the design principle above says to avoid.
+
 ### What a flat ladder costs the measurement
 
 The second run log is the one that showed the limit. Thirteen of twenty patterns
