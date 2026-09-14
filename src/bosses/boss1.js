@@ -27,11 +27,16 @@ function* cardinalBloom(A) {
       A.ring({ n: n * 2, speed: A.spd(3.15), angle: off * -1.7, color: C.ice, r: 4, shape: 'pellet' });
     }
     if (k % 3 === 2) {
-      A.fan({
-        n: A.n(5, 3), spread: 0.42, speed: A.spd(3.6),
-        angle: A.aimLead(undefined, undefined, 3.6),
-        shape: 'kunai', color: C.white, r: 4.5,
-      });
+      // The third-beat accent, as a pair of rings rather than an aimed spear
+      // volley. See "Aimed volleys" in the README: a fast narrow fan thrown at
+      // where you are standing is a reflex check, not a pattern -- there is
+      // nothing in it to read, only something to flinch away from. Two rings
+      // half a slot out of phase ask the question the rest of the phase asks,
+      // which is whether the lane you picked is still a lane when the second
+      // one arrives.
+      const m = A.n(15, 9);
+      A.ring({ n: m, speed: A.spd(2.95), angle: off * 1.6, shape: 'diamond', color: C.ice, r: 4.6 });
+      A.ring({ n: m, speed: A.spd(2.45), angle: off * 1.6 + TAU / (2 * m), shape: 'diamond', color: C.white, r: 4.4 });
     }
     if (A.L(4) && k % 6 === 5) {
       // Lunatic only: a delayed reversal ring that snaps back at the player.
@@ -65,8 +70,17 @@ function* twinHelix(A) {
         A.one({ angle: ang + base, speed: A.spd(2.5) });
         A.one({ angle: -ang + base + 0.5, speed: A.spd(2.0), color: C.blue, r: 4.6 });
       }
-      if (A.L(3) && i % 9 === 0) {
-        A.one({ angle: A.aim(), speed: A.spd(4.2), shape: 'rice', color: C.white, r: 4.4 });
+      if (A.L(3) && i % 2 === 0) {
+        // A third strand on each arm rather than the fast aimed rice this used
+        // to spit out every ninth tick. The phase is about the arms bunching at
+        // the reversal, so thickening the arms makes the reversal matter more;
+        // the rice made you look away from them.
+        for (let a = 0; a < arms; a++) {
+          A.one({
+            angle: ang + a * TAU / arms + 0.26, speed: A.spd(2.25),
+            shape: 'pellet', color: C.ice, r: 4.4,
+          });
+        }
       }
       // The emission rate itself scales -- otherwise Novice gets the same
       // wall of spiral bullets as Lunatic, just moving slower.
@@ -130,15 +144,26 @@ function* polygonCage(A) {
     A.sfx('shot', 70);
     yield A.w(44);
 
-    // Three tightening spears, each faster than the last.
+    // Three quickening polygons on the off-beat, each one a side busier than
+    // the last. This used to be three tightening spears thrown at the player at
+    // 4.1, 4.6 and 5.1px/frame -- the most reflex-heavy thing in the game, and
+    // the reason this phase played as if it belonged to a different one. The
+    // stepped rhythm is the part worth keeping, so it stays; only what arrives
+    // on each step changes, into the shape language the phase is already
+    // speaking. Each carries its own notch, re-aimed, so the accent still
+    // tracks you -- it just does it with a door instead of a spear.
     for (let i = 0; i < 3; i++) {
-      A.fan({
-        n: A.n(3, 2), spread: 0.34 - i * 0.08,
-        speed: A.spd(4.1 + i * 0.5),
-        angle: A.aimLead(undefined, undefined, 4.1 + i * 0.5),
-        shape: 'rice', color: C.white, r: 4.3,
+      A.polyRing({
+        sides: sides + 1 + i, perSide: A.n(7, 4), radius: 22,
+        speed: A.spd(2.3 + i * 0.45), angle: -k * 0.31 + i * 0.42,
+        // Only the first carries a notch. Giving all three one aimed at the
+        // player handed over three doors in a row and made the whole accent
+        // free -- the sweep read the phase at better than twice its column.
+        // One door, then two rings you have to already be through.
+        ...(i === 0 ? { gapAt: A.aim(), gap: A.L(2) ? 0.30 : 0.40 } : {}),
+        shape: 'pellet', color: C.teal, r: 4.2,
       });
-      yield A.w(7);
+      yield A.w(9);
     }
 
     k++;

@@ -160,7 +160,7 @@ once planted.
 | Ship | Unfocused | Focused | |
 | --- | --- | --- | --- |
 | **VECTOR** | 1 straight · 2 spread · 2 homing | two forward lanes | Balanced. Good everywhere, best nowhere. |
-| **TRACER** | 3 homing · 2 spread | three seekers | Lands wherever you are. Least punished for bad position, least rewarded for good. |
+| **TRACER** *(default)* | 3 homing · 2 spread | three seekers | Lands wherever you are. Least punished for bad position, least rewarded for good. |
 | **BLOOM** | 4 spread · 1 homing | a five-wide fan | Forgiving aim. The fan spends its outer shots on empty space at range. |
 | **LANCE** | 2 straight · 1 spread · 1 homing | one heavy bolt | Highest ceiling, no margin. Dead weight unless you are under the boss. |
 
@@ -208,6 +208,7 @@ problem, not a prediction one, and it lands on a different axis.
 | `react` | frames until the most urgent closing bullet arrives. This is where speed shows up. |
 | `aimed` | share of bullets launched within 8° of the player. Standing still is not a plan. |
 | `tight` | the 10th-percentile `room`. You die at a pattern's pinch points, not in its typical conditions. |
+| `warn` | reading time: how old a bullet was, in frames, the first time it came within 60px. 10th percentile again. |
 | `flux` | bullets newly entering the planning radius per second. Reported, not scored. |
 | `aimRate` | aimed launches per second — the same events as `aimed`, counted absolutely. Reported, not scored. |
 
@@ -217,7 +218,7 @@ construction the amount your reading of it was wrong. `react x speed` is how far
 you can get before contact — so
 
 ```
-safety = sqrt( (tight - drift) x react x speed x (1 - aimCost x aimed) )
+safety = sqrt( (tight - drift) x react x speed x (1 - aimCost x aimed) x min(1, warn/160) )
 ```
 
 It used to be `min()` of those two budgets, and the run log is what changed it.
@@ -241,6 +242,71 @@ pattern, which is visibly what used to happen to Gear Release between Easy and
 Normal, but every rate-based variant scored −0.449 against the share's −0.446 —
 inside the noise on seventeen phases. The aim term is the one judgement left, and
 it is a flag (`--aim-cost`) rather than a constant so it can be argued with.
+
+### Where a bullet starts
+
+`warn` is the last axis and the one a player asked for twice. Every other axis
+looks at bullets already in flight, which quietly assumes they all arrived with
+the same amount of notice. They do not. A ring leaving the boss crosses most of
+the playfield before it matters — two or three seconds to look at it and pick a
+lane. Convergence spawned its wave on the playfield border, *including the
+bottom and side edges the player is already sitting against*, so a kunai could
+appear thirty pixels away: measured at **three frames** between existing and
+being close enough to dodge, against a 150–300 frame norm for every other
+pattern in the game. Same speed, same density, a completely different demand —
+and that is what "fast bullets that come from much closer than the boss" means
+when you are the one playing it.
+
+It enters `safety` in the same place as the aim cost and for the same reason:
+reach is the distance you can cover before contact, and distance you did not
+know to start covering is not yours. Against the run log this scores **−0.672**
+where leaving reading time out scores −0.468 on the same axes, and it is the
+only candidate tried that also reproduces the player's own ranking of
+Convergence and Reflection as the two hardest patterns on Normal. `--warn-ref`
+sets where more notice stops helping.
+
+Two things it took a rewrite to get right, both worth not repeating:
+
+- **Measure the real trajectory, not a straight line at launch.** The first
+  version solved for when a bullet's spawn heading would bring it within 60px.
+  That can only see bullets already pointed at you, so gravity arcs, ricochets,
+  curves and stop-and-snap rings contributed nothing and the axis collapsed into
+  a second reading of `aimed` — Ballistic Rain, whose every bullet is a lob
+  fired *upward*, scored on a handful of stragglers. A bullet's age the first
+  frame it comes close needs no extrapolation and no special case.
+- **A bullet born already close is not evidence.** The player can walk into an
+  emitter, and on the sparse low tiers the bot does — with nothing to dodge it
+  drifts under the boss and a ring spawns around it at age zero. Three phases
+  read 0.05–0.09 of their column at Novice *and nowhere else* before those
+  samples were excluded. Nothing real is lost: a pattern that puts bullets on
+  the player wherever the player is puts them far from its own emitter.
+
+## Aimed volleys, and why there are none left
+
+Nine patterns used to punctuate themselves with a fast narrow fan of white
+kunai thrown at where the player was standing — 3.5 to 5.1px/frame, aimed or
+lead-aimed. They are gone, and where the phase could afford it the density came
+back in that phase's own language: paired rings on Cardinal Bloom, a third
+strand per arm on Twin Helix, stepped polygons on Polygon Cage, a second cut
+through the automaton on Rule Thirty, a third arm ring on Phyllotaxis, a volley
+fired back down the petals on Rose Curve, another run of the logistic map on
+Strange Attractor, denser ricochet rings on Reflection.
+
+This is a design position rather than a measurement, and it is the player's: an
+aimed fast volley moves the difficulty from pattern recognition to reflex, and
+reflex is what breaks flow. There is nothing in such a volley to read — only
+something to flinch away from — so it interrupts the thing the rest of the
+pattern is asking you to do.
+
+Two survive. Final Theorem's fan visibly curves and is now launched across the
+field rather than at the player; and Gear Release keeps a single aimed pressure
+shot, which exists to stop you parking out of the gears' radial path, and which
+is one readable bullet rather than a spray.
+
+Two of the sites took the removal with no replacement at all, because the sweep
+said they were already too tight: Loom at Lunatic, and Reflection — the pattern
+that a player named as one of the two hardest on Normal *and* as one of the ones
+they wanted the aimed volleys out of. Those turned out to be the same note.
 
 The 26-frame horizon matches the autopilot's own lookahead. It matters — a wall
 bounce reads as 5.8px of lost room over 20 frames and 18.6px over 45 — so it

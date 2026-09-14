@@ -18,7 +18,18 @@ function* loom(A) {
     // fixed count would swallow a sparse Novice wall whole.
     // Widest where the two ranks cross, which is the only place this pattern is
     // actually tight: the gap has to admit a diagonal route through both.
-    const gapW = cols * (A.L(4) ? 0.26 : A.L(3) ? 0.21 : A.L(1) ? 0.20 : 0.21);
+    // Wider at the bottom of the ladder than it used to be. A wall gives less
+    // notice than anything fired from the boss -- it spans the playfield, so it
+    // is already beside you when it starts -- and once reading time entered the
+    // measurement this phase read as the tightest row in the game at every
+    // tier. The gap is the only thing here that can give time back.
+    // Novice is left where it was. The gap is a half-width in SLOTS and the
+    // skip test is an integer comparison, so at Novice's eleven columns the
+    // step from 0.21 to 0.30 is the step from five empty slots to seven -- a
+    // wall that is mostly hole, and the dead-zone scan duly found two places to
+    // park in the middle of it. The sag this was widening for was at Easy
+    // through Hard, and Novice already measured fine.
+    const gapW = cols * (A.L(4) ? 0.26 : A.L(3) ? 0.23 : A.L(2) ? 0.25 : A.L(1) ? 0.24 : 0.21);
     const gapIdx = A.rnd.ri(1, cols - 2);
 
     if (k % 2 === 0) {
@@ -39,7 +50,7 @@ function* loom(A) {
       const fromLeft = A.rnd.r() < 0.5;
       const rows = A.nw(14, 10);
       A.wall({
-        n: rows, gapIdx: A.rnd.ri(1, rows - 2), gapW: rows * (A.L(3) ? 0.09 : A.L(1) ? 0.13 : 0.19),
+        n: rows, gapIdx: A.rnd.ri(1, rows - 2), gapW: rows * (A.L(3) ? 0.11 : A.L(1) ? 0.16 : 0.19),
         angle: fromLeft ? 0 : PI,
         x: fromLeft ? PLAY.x - 14 : PLAY.right + 14,
         y: PLAY.cy, span: PLAY.h,
@@ -76,13 +87,11 @@ function* loom(A) {
         speed: A.spd(1.85), color: C.violet, shape: 'diamond', r: 5,
       });
     }
-    if (A.L(4)) {
-      A.fan({
-        n: A.n(4, 2), spread: 0.5, speed: A.spd(3.8),
-        angle: A.aimLead(undefined, undefined, 3.8),
-        shape: 'kunai', color: C.white, r: 4.4,
-      });
-    }
+    // Lunatic used to add a fast aimed kunai fan here. Removed with nothing in
+    // its place: see "Aimed volleys" in the README for why it went, and the
+    // sweep for why nothing replaced it -- Loom at Lunatic was already the
+    // tightest cell in the game, so this is the one site where the reflex tax
+    // was also simply too much pattern.
 
     A.sfx('shot', 80);
     k++;
@@ -144,7 +153,6 @@ function* ruleThirty(A) {
   let cells = caSeed(M, 'center');
   let sier = caSeed(S, 'center');
   let rot = 0;
-  let step = 0;
 
   while (true) {
     for (let i = 0; i < M; i++) {
@@ -174,16 +182,23 @@ function* ruleThirty(A) {
       if (live === 0 || live > sier.length * 0.75) sier = caSeed(S, 'center');
     }
 
-    if (A.L(3) && step % 4 === 3) {
-      A.fan({
-        n: A.n(3, 2), spread: 0.3, speed: A.spd(4.4),
-        angle: A.aimLead(undefined, undefined, 4.4),
-        shape: 'kunai', color: C.white, r: 4.3,
-      });
+    if (A.L(3)) {
+      // A second reading of the same automaton, counter-rotating and slower,
+      // instead of the fast aimed kunai this used to throw every fourth step.
+      // The cells are the phase; taking another cut through them is the way to
+      // make it denser without asking the player to stop reading and flinch.
+      for (let i = 0; i < M; i++) {
+        if (!cells[i]) continue;
+        A.one({
+          angle: -rot * 0.6 + (i + 0.5) * TAU / M,
+          speed: A.spd(1.55),
+          shape: 'diamond', color: C.rose, r: 4.4,
+          radius: 30,
+        });
+      }
     }
 
     rot += 0.21;
-    step++;
     A.sfx('shot', 90);
     yield A.w(12);
   }
@@ -223,22 +238,32 @@ function* reflection(A) {
     const range = (v) => Math.round(760 / v);
     const fast = A.spd(1.85);
     const slow = A.spd(1.4);
+    const mid = A.spd(1.62);
     A.ring({
-      n: A.n(8, 5), speed: fast, angle: k * 0.91,
+      n: A.n(12, 7), speed: fast, angle: k * 0.91,
       bounce: bounces, life: range(fast),
     });
     if (A.L(1)) {
       A.ring({
-        n: A.n(6, 3), speed: slow, angle: -k * 1.3 + 0.4,
+        n: A.n(9, 5), speed: slow, angle: -k * 1.3 + 0.4,
         bounce: bounces, life: range(slow), color: C.magenta, shape: 'hex', r: 5.2,
       });
     }
-    if (k % 2 === 0) {
-      A.fan({
-        n: A.n(4, 2), spread: 0.36, speed: A.spd(4.7),
-        angle: A.aim(), shape: 'kunai', color: C.white, r: 4.2,
+    if (A.L(2)) {
+      A.ring({
+        n: A.n(8, 4), speed: mid, angle: k * 0.55 + 1.1,
+        bounce: bounces, life: range(mid), color: C.rose, shape: 'diamond', r: 4.8,
       });
     }
+    // An aimed kunai fan at 4.7px/frame -- the fastest volley in the game --
+    // used to land here every other beat. Gone, and the rings above carry what
+    // it was carrying: counts up by half and a third ring from Normal.
+    //
+    // This is the trade the whole pass is built on. A player named this as one
+    // of the two hardest patterns on Normal and also said the fast aimed
+    // volleys were the part they wanted gone -- and those are the same note,
+    // not two. The lattice is the thing worth looking at here; the kunai was
+    // the thing that punished you for looking at it.
     if (A.L(4) && k % 4 === 3) {
       // Bank shots: aimed at the wall so they arrive from behind.
       const wallX = A.px < PLAY.cx ? PLAY.right : PLAY.x;
