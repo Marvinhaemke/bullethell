@@ -22,6 +22,64 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 
+/**
+ * The target band, in the player's own words and numbers.
+ *
+ * This is the only calibration in the project that comes from a person rather
+ * than from a model of one, and it is worth more than the sweep for exactly
+ * that reason. It is one player's skill -- self-described as "not a hardcore
+ * bullet hell player, but not that bad" -- so it is a statement about what a
+ * difficulty tier should FEEL like to the person it is aimed at, not a
+ * universal constant. Re-read it as: at the tier you are meant to be playing,
+ *
+ *   under 0.5   too easy -- though one such phase per boss is fine, and
+ *               especially so on the earlier bosses
+ *   0.5 to 1.5  right
+ *   1.5 to 2    very hard, and one per boss is acceptable late in the run
+ *   2 to 3      too hard here; this is what the NEXT tier up should look like
+ *   over 3      not a difficulty, a wall: bad design, or two tiers misplaced
+ */
+const BANDS = [
+  { max: 0.5, key: 'easy', label: 'too easy' },
+  { max: 1.5, key: 'good', label: 'good' },
+  { max: 2.0, key: 'steep', label: 'very hard (one per boss ok)' },
+  { max: 3.0, key: 'over', label: 'TOO HARD -- belongs one tier up' },
+  { max: Infinity, key: 'wall', label: 'WALL -- two tiers up, or bad design' },
+];
+function verdict(dpa) { return BANDS.find((b) => dpa < b.max); }
+
+function banding(rows) {
+  const by = new Map(BANDS.map((b) => [b.key, []]));
+  for (const r of rows) by.get(verdict(r.deaths / r.tries).key).push(r);
+  const dpa = rows.map((r) => r.deaths / r.tries).sort((a, b) => a - b);
+  const med = dpa.length % 2 ? dpa[(dpa.length - 1) / 2]
+    : (dpa[dpa.length / 2 - 1] + dpa[dpa.length / 2]) / 2;
+
+  console.log('\nAgainst the target band:');
+  for (const b of BANDS) {
+    const n = by.get(b.key).length;
+    console.log(`  ${b.label.padEnd(34)} ${String(n).padStart(3)}  ` + '#'.repeat(n));
+  }
+  console.log(`\n  median ${med.toFixed(2)} deaths/attempt -- the band wants 0.5 to 1.5.`);
+
+  // One easy phase per boss is fine; two is a boss with a hole in it.
+  const easyPer = new Map();
+  for (const r of by.get('easy')) easyPer.set(r.boss, (easyPer.get(r.boss) || 0) + 1);
+  const crowded = [...easyPer].filter(([, n]) => n > 1);
+  if (crowded.length) {
+    console.log('  bosses with more than one too-easy phase: ' +
+      crowded.map(([b, n]) => `${b} (${n})`).join(', '));
+  }
+  const bad = [...by.get('over'), ...by.get('wall')];
+  if (bad.length) {
+    console.log('\n  Above the band, worst first:');
+    for (const r of bad) {
+      console.log(`    ${r.phase.padEnd(24)} ${(r.deaths / r.tries).toFixed(2)}  ${verdict(r.deaths / r.tries).label}`);
+    }
+  }
+}
+
+
 const args = process.argv.slice(2);
 const num = (f, d) => { const i = args.indexOf(f); return i >= 0 ? Number(args[i + 1]) : d; };
 const USE_BOT = args.includes('--bot');
@@ -190,16 +248,18 @@ if (phases.length) {
   const prows = [...pby.values()].sort((a, b) => (b.deaths / b.tries) - (a.deaths / a.tries));
   if (prows.length) {
     console.log('\nPattern attempts, worst deaths-per-attempt first:');
-    console.log('BOSS          PHASE                      DIFF    TRIES  CLEARED  DEATHS/TRY  GRAZE/TRY   AVG TIME');
-    console.log('-'.repeat(104));
+    console.log('BOSS          PHASE                      DIFF    TRIES  CLEARED  DEATHS/TRY  GRAZE/TRY   AVG TIME  VERDICT');
+    console.log('-'.repeat(116));
     for (const r of prows) {
       console.log(
         r.boss.padEnd(14) + r.phase.padEnd(27) + r.diff.padEnd(7) +
         String(r.tries).padStart(6) + String(r.cleared).padStart(9) +
         (r.deaths / r.tries).toFixed(2).padStart(12) +
         (r.grazes / r.tries).toFixed(0).padStart(11) +
-        `${mean(r.secs) === null ? '--' : mean(r.secs).toFixed(0) + 's'}`.padStart(11));
+        `${mean(r.secs) === null ? '--' : mean(r.secs).toFixed(0) + 's'}`.padStart(11) +
+        '  ' + verdict(r.deaths / r.tries).label);
     }
+    banding(prows);
   }
 }
 

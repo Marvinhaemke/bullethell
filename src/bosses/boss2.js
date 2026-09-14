@@ -29,7 +29,18 @@ function* loom(A) {
     // wall that is mostly hole, and the dead-zone scan duly found two places to
     // park in the middle of it. The sag this was widening for was at Easy
     // through Hard, and Novice already measured fine.
-    const gapW = cols * (A.L(4) ? 0.26 : A.L(3) ? 0.23 : A.L(2) ? 0.25 : A.L(1) ? 0.24 : 0.21);
+    // Hard's gap matches Lunatic's. The wider Lunatic gap was compensation for
+    // a much denser Lunatic wall; with the top two tiers compressed there is
+    // less to compensate for, and Hard was left tighter than the tier above it
+    // -- the tightest cell in the game, and 2.33 deaths an attempt in a log
+    // whose band tops out at 1.5.
+    // Hard gets the widest gap in the ladder and Lunatic the narrowest above
+    // Normal. Loom has no Lunatic-only layer any more -- the aimed kunai fan
+    // that used to be its L(4) came out -- so with the top tiers compressed,
+    // the gap is the only thing left that can tell those two tiers apart, and
+    // Hard was reading tighter than the tier above it. Hard is also the cell a
+    // log put at 2.33 deaths an attempt against a band topping out at 1.5.
+    const gapW = cols * (A.L(4) ? 0.23 : A.L(3) ? 0.28 : A.L(2) ? 0.25 : A.L(1) ? 0.24 : 0.21);
     const gapIdx = A.rnd.ri(1, cols - 2);
 
     if (k % 2 === 0) {

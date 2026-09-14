@@ -418,6 +418,35 @@ So the game records what actually happens, in three streams. Deaths alone are
 not enough — a pattern cleared first try having grazed forty bullets and one
 cleared on the third attempt both report zero deaths:
 
+### The band
+
+`npm run deaths` scores every phase against a target, in deaths per attempt at
+the tier you are meant to be playing:
+
+| | |
+| --- | --- |
+| **under 0.5** | too easy — though one such phase per boss is fine, more so on the early bosses |
+| **0.5 – 1.5** | right |
+| **1.5 – 2** | very hard; one per boss is acceptable late in the run |
+| **2 – 3** | too hard *here* — this is what the next tier up should look like |
+| **over 3** | not a difficulty, a wall: bad design, or two tiers misplaced |
+
+This is the only calibration in the project that came from a person rather than
+from a model of one, and it outranks everything else here for exactly that
+reason. It is one player's skill — self-described as *"not a hardcore bullet
+hell player, but not that bad"* — so read it as what a tier should **feel** like
+to the person it is aimed at, not as a universal constant.
+
+It is also what caught the ladder's biggest fault. Three Hard runs at three
+attempts a phase scored a **median of 2.00**, with ten of twenty phases above the
+band and seven of those at *"two tiers up, or bad design"* — while the same
+player's Normal run had thirteen of twenty phases at **zero**. One step was
+spanning the entire good band and overshooting it. That is a tier-table problem,
+not twenty pattern problems, and it is why `DIFFICULTIES` now compresses toward
+the top instead of stepping in even ratio: difficulty is badly superlinear in
+these knobs, so the +32% density and +14% speed that used to separate Normal
+from Hard were multiplying deaths by about four.
+
 | stream | |
 | --- | --- |
 | `deaths` | one per death, taken at the collision site where the killing bullet is still in hand — reconstructing it afterwards from what was nearby fails exactly when the screen is busiest |
