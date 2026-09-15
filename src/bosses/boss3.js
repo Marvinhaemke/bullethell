@@ -31,15 +31,25 @@ function* ballisticRain(A) {
         // every other pattern, and crossing their path rather than closing on
         // it. Fast and sideways is the combination that reads as random.
         // Capped in absolute terms as well as scaled ones. Terminal velocity
-        // is a READABILITY parameter here, not a difficulty knob: past about
-        // six and a half pixels a frame a lobbed arc stops being a trajectory
-        // you can follow and becomes something that arrives. Scaling it alone
-        // put Hard at 7.4 and Lunatic at 8.5, and a Hard log came back with six
-        // of its seven deaths on this phase to arcs doing 6.3 to 7.5 -- the
-        // same complaint the run before had at Normal, one tier up. The tiers
-        // below Normal still ladder; Hard and Lunatic take their difficulty
-        // from count and beat instead.
-        ay: g, maxSpeed: Math.min(A.spd(6.5), 6.6),
+        // is a READABILITY parameter here, not a difficulty knob: past some
+        // speed a lobbed arc stops being a trajectory you can follow and
+        // becomes something that arrives. Scaling it alone put Hard at 7.4 and
+        // Lunatic at 8.5. The tiers below Normal still ladder; Hard and Lunatic
+        // take their difficulty from count and beat instead.
+        // 6.5/6.6 -> 4.6/4.7, on a second report from the same player after the
+        // first cut: "Ballistic Rain still has very fast raining bullets (the
+        // big ones). I'd reduce the speed of those bullets further." The log
+        // agrees -- five deaths in one attempt, three of them to shells doing
+        // 5.6 to 6.7 where every other pattern in this game kills at 1.5 to 3.8.
+        // Twice the speed of everything else was never going to read as the
+        // same kind of object.
+        //
+        // The cap applies only along the acceleration, so this limits the FALL
+        // and leaves the launch alone: the arcs are thrown just as high and just
+        // as wide, and take longer coming down. Which is the pattern -- the
+        // danger here was always meant to be where the shells land, not how hard
+        // they hit.
+        ay: g, maxSpeed: Math.min(A.spd(4.6), 4.7),
       });
     }
 
@@ -67,7 +77,11 @@ function* ballisticRain(A) {
         const x = A.rnd.rr(PLAY.x + 40, PLAY.right - 40);
         A.one({
           x, y: PLAY.y - 40, angle: HALF_PI + A.rnd.rr(-0.3, 0.3),
-          speed: A.spd(1.2), ay: g * 0.8, maxSpeed: Math.min(A.spd(5.5), 5.6),
+          // Same cut as the lobs, and a little under them: a mortar starts
+          // above the ceiling with the whole screen to fall through, so it
+          // reaches its terminal velocity every time where a lob only just
+          // gets there.
+          speed: A.spd(1.2), ay: g * 0.8, maxSpeed: Math.min(A.spd(4.0), 4.1),
           shape: 'hex', color: C.red, r: 6,
         });
       }
@@ -84,6 +98,7 @@ function* ballisticRain(A) {
 function* maelstrom(A) {
   A.st({ shape: 'circle', color: C.orange, r: 5 });
   let th = 0;
+  let beat = 0;
   while (true) {
     // Launching at a fixed angle to the radius is what makes a logarithmic
     // spiral: the constant pitch draws the arms, the gentle turn curls them.
@@ -94,12 +109,33 @@ function* maelstrom(A) {
     // Lunatic down to half a typical phase's room.
     const arms = Math.min(6, A.n(4, 2) + 1);
     const pitch = 1.02;
+    // HOW FAST THE ARMS UNWIND, and therefore how much of the field the vortex
+    // covers. This is the fix for a player's report that the phase is "very
+    // easy if you stay at the bottom, because the yellow bullets can't reach
+    // you, but almost impossible if you stay anywhere else".
+    //
+    // They were describing geometry, not luck. `turn` is an angular rate, so an
+    // arm curls at a radius of speed/turn: 289px for the orange layer and 177px
+    // for the amber, against a boss that sits around y=188 in a playfield that
+    // runs to y=748. A circle of radius 177 centred there reaches y=365. The
+    // bottom third of the screen was outside the vortex, and parking a
+    // motionless player at fifteen spots for 25 seconds measures exactly that
+    // -- 18-22% of frames under threat along the bottom edge against 50-78%
+    // everywhere above it, a fourfold shelter.
+    //
+    // Decay is the honest knob rather than the turn rate: a slower turn would
+    // draw a flatter spiral from the start, where faster decay keeps the tight
+    // curl at the eye -- which is the picture -- and lets the arms unwind into
+    // the corners as they age, which is what a real vortex does anyway. Total
+    // bend falls from 5.0 and 6.5 radians to 2.2 and 2.9, so an arm still turns
+    // through more than a right angle before it straightens out.
+    const unwind = 0.9955;
     for (let a = 0; a < arms; a++) {
       const ang = th + a * TAU / arms;
       A.one({
         angle: ang + pitch, radius: 34,
         speed: A.spd(2.7),
-        turn: -0.010, turnDecay: 0.998,
+        turn: -0.010, turnDecay: unwind,
         life: 300,
       });
     }
@@ -108,16 +144,24 @@ function* maelstrom(A) {
         const ang = -th * 1.35 + a * TAU / arms;
         A.one({
           angle: ang - pitch, radius: 28,
-          speed: A.spd(2.15), turn: 0.013, turnDecay: 0.998,
+          speed: A.spd(2.15), turn: 0.013, turnDecay: unwind,
           color: C.amber, r: 4.6, life: 300,
         });
       }
     }
-    if (A.L(4) && (A.t % 96) < 3) {
-      // Outward pressure wave to stop players from camping the eye.
+    // Outward pressure wave to stop players from camping the eye.
+    //
+    // Counted in beats rather than `A.t % 96`, which sampled a 3-frame window on
+    // a 9-frame cadence and so fired or did not depending on where the beat
+    // happened to land. Bringing it down to Easy was tried as the fix for the
+    // calm floor below and is not it: twenty-odd bullets spread round a circle
+    // are 176px apart by the time the ring has travelled far enough to matter,
+    // and a parked player at the bottom felt 2% more pressure for it.
+    if (A.L(4) && beat % 11 === 0) {
       A.ring({ n: A.n(20, 14), speed: A.spd(1.1), angle: th,
         accel: 0.02, maxSpeed: A.spd(4), shape: 'ring', color: C.red, r: 5.5 });
     }
+    beat++;
     th += 0.105;
     A.sfx('shot', 130);
     // A.gap rather than A.w: these bullets curve, so clampLife keeps them on

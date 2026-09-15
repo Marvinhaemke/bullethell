@@ -119,7 +119,9 @@ the player is standing against.
 ![Maelstrom](docs/maelstrom.png)
 
 ### 3 · ORBITER — *Ballistics & Vortices*
-Physics. Bullets lobbed on gravity arcs that cross where they land; a vortex
+Physics. Bullets lobbed on gravity arcs that cross where they land — terminal
+velocity is capped well under their launch speed, so the danger is where a shell
+comes down rather than how hard it hits; a vortex
 built by launching at a fixed pitch angle to the radius, which is what actually
 draws a logarithmic spiral; concentric batteries that latch into orbit, spin up
 while you watch, then fire outward one gear at a time; and mirrored fans of
@@ -142,7 +144,7 @@ at wherever you happen to be standing.
 The finale. Firing angles taken from iterates of the logistic map at r = 3.94 —
 fully deterministic, never periodic. Rotating beam sweeps over a pellet curtain.
 Three emitters riding Lissajous curves across the field. Bullets converging
-inward from the border while a ring accelerates outward. Then a 40-second
+inward from the top edge and the upper sides while a ring accelerates outward. Then a 40-second
 **survival** phase where the boss is invulnerable and four generators run at
 once on a single clock — its beam pair is *held still* rather than swept, which
 is the one place in the game a sweep was the wrong call: it turns over a curtain
@@ -508,6 +510,45 @@ These two are a **check, not a difficulty term**. They are meant to read near
 zero, and a phase that lights up is not necessarily hard — it is making a demand
 this game has decided not to make.
 
+### Somewhere the pattern never reaches
+
+The other way a pattern breaks is a place you can stand and ignore it. `npm run
+deadzones` has always tested that as a **binary** — park a motionless player at a
+spread of spots and report any that nothing ever came near — and that test finds
+nothing in this game. It still missed one:
+
+> Maelstrom is very easy if you stay at the bottom, because the yellow bullets
+> can't reach you, but it's almost impossible if you stay anywhere else.
+
+Two things were wrong. The measure was binary where the complaint is a
+**gradient** — the floor is threatened, just far less than everywhere else — and
+the spot grid only sampled the bottom of the screen, *where players actually
+sit*, so every spot it tested was inside the shelter and there was nothing to
+compare against. A measure of "is one place unusually safe" needs somewhere
+unsafe in the sample.
+
+Both fixed: the grid now reaches to mid height, and each cell reports how many
+times calmer its calmest spot is than a typical one. Parking a player for 25
+seconds at Hard, Maelstrom read **18–22% of frames under threat along the floor
+against 50–78% through the middle** — a threefold shelter, and the player's
+report exactly.
+
+The cause was geometry, not luck. `turn` is an angular rate, so an arm curls at
+a radius of `speed/turn` — 289px for the orange layer and **177px for the
+amber**, against a boss sitting around y=188 in a playfield that runs to y=748. A
+circle of radius 177 centred there reaches y=365. The bottom third of the screen
+was outside the vortex and always had been.
+
+The fix is to let the arms unwind faster (`turnDecay` 0.998 → 0.9955) rather than
+to slow their turn: the tight curl at the eye is the picture, and a real vortex
+opens out as it ages anyway. The field is now 35–37% along the floor against
+50–69% through the middle, and the *peak* came down with it — spreading a pattern
+out is not the same as adding to it.
+
+From Normal up, no phase in the game now has a shelter at all; the ones the scan
+still reports are all at Novice and Easy, where a calm corner is the tier doing
+its job.
+
 ### The levers, in order
 
 So when a pattern has to come down:
@@ -863,7 +904,7 @@ npm test            # drives every boss at every difficulty in Chromium
 npm run survive     # can a player actually dodge each pattern?
 npm run margins     # how much dodging room each pattern really has
 npm run difficulty  # ...and how much of that room you can rely on
-npm run deadzones   # can you park anywhere and ignore a pattern?
+npm run deadzones   # can you park anywhere and ignore a pattern -- or shelter there?
 npm run autopsy -- --boss 5 --phase 4   # why is this phase hard?
 npm run deaths -- --bot                # what actually kills the bot
 npm run bot         # autopilot quality: survival, gap width, idle drift
