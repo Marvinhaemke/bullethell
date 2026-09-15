@@ -96,6 +96,18 @@
 //           Every other axis here, lanes included, reads ONE FRAME, and that
 //           misses a whole class of pattern. See SPACE AND TIME, below.
 //
+//   rise    share of the threat that is travelling UP the screen: bullets that
+//           arrived from below or from behind. Speed-weighted, because a slow
+//           bullet from below is not the complaint.
+//   spread  how much the threat disagrees about where it is going. The
+//           resultant of every nearby velocity over its total magnitude: 0 when
+//           they all travel the same way, 1 when they cancel because they come
+//           from everywhere at once.
+//
+//           See WHERE IT COMES FROM, below. These two are a DESIGN CHECK, not a
+//           difficulty term: they are meant to read near zero, and on eighteen
+//           of twenty patterns they do.
+//
 // COMBINING THEM
 //
 // tight and drift are both in pixels and compose without a fudge factor:
@@ -172,6 +184,48 @@
 // said twice: a bullet that does something after launch you did not read. Which
 // is exactly what the README's design principle already says to avoid.
 //
+// WHERE IT COMES FROM
+//
+// The longest-running complaint in four run logs was never about how much or
+// how fast. It was about WHERE FROM, and the fourth log said it exactly:
+//
+//   "The main problem of relatively fast bullets coming from all directions
+//   persists. In other levels there may be more and even faster bullets, but
+//   at least they all come from the top or at a top angle and not from all
+//   directions at once."
+//
+// That is a statement about attention, not about room. The boss is at the top,
+// so that is where a player is looking; a pattern that also shoots from behind
+// them asks them to watch two places at once, and no amount of clearance makes
+// that readable. Nothing else in this tool could see it -- `warn` gets close,
+// since a bullet from below is usually one with little notice, but it scores
+// the TIME a bullet gave, not the DIRECTION it gave it from, and a slow
+// ricochet that has been in the box for four hundred frames gives plenty of
+// one and none of the other.
+//
+// So: `rise`, the share of the threat headed up the screen, and `spread`, how
+// much the threat disagrees about its heading. Both speed-weighted, both summed
+// over every near closing bullet on every frame, both falling out of the
+// velocity field with nothing tagged by hand.
+//
+// They separate the game in one cut. At Hard, eighteen of twenty patterns score
+// rise 0% and spread 1-8% -- everything in this game shoots downward, because
+// that is what a boss at the top of the screen does. The two that do not were
+// the two the player had been naming for four sessions:
+//
+//   Reflection   rise 16%   spread 43%   ricochets off all four walls
+//   Convergence  rise  7%   spread 34%   spawns on the whole perimeter
+//
+// Both are fixed at the source rather than by tuning: Reflection's floor stops
+// reflecting, and Convergence's wave closes in from the top edge and the upper
+// sides instead of the full circle. Both then read rise 0%, spread 11%.
+//
+// These are a CHECK, not a term in `safety`. They are meant to read near zero,
+// and a phase that lights up is not necessarily hard -- it is making a demand
+// on the player that this game has decided not to make. Whether a future
+// pattern gets to break that is a design call, and this is the number to have
+// in front of you while making it.
+//
 // SPACE AND TIME
 //
 // The lane measure above, and every other axis here, reads a single frame. That
@@ -179,8 +233,12 @@
 // bullets sweeping down the screen with a gap that slides sideways from row to
 // row. Freeze any frame and the rows are a grid whose gaps do not line up
 // vertically, so the only way through is a squeeze between two rows -- and that
-// is what the lane measure reports for Weaver's Curtain: 3.8px of bottleneck at
-// Novice falling to 0.0 at Lunatic, tighter than anything else in the game.
+// is what the lane measure reported for Weaver's Curtain, a probe pattern built
+// to find exactly this: 3.8px of bottleneck at Novice falling to 0.0 at
+// Lunatic, tighter than anything else in the game. (The Curtain has since been
+// removed at the player's request -- it did its job as an instrument and was
+// never much of a fight. The blind spot it found was real and this is the
+// measure that closes it.)
 //
 // Played, nobody goes through the rows. You ride the gap: stand still, let a
 // row pass, slide sideways into the next gap as it arrives. A lane-follower
@@ -630,6 +688,13 @@ await page.evaluate(() => {
     };
     let aimedHits = 0;
     let aimedSeen = 0;
+    // Where the threat comes from. Summed over every near, closing bullet on
+    // every frame, so a bullet that hangs around near you is counted for as
+    // long as it is a threat -- which is right, because that is how long you
+    // have to keep it in your head.
+    let threat = 0;      // total speed of all of them
+    let rise = 0;        // ... of which, how much is directed UP the screen
+    let headX = 0, headY = 0;   // vector sum of their velocities
     // Bullets newly entering the planning radius, counted once each. This is
     // density x speed by construction -- a faster field sweeps more bullets
     // past you per second, and so does a denser one -- which is the pairing
@@ -741,6 +806,13 @@ await page.evaluate(() => {
         if (closing > 0.01) {
           const t = clear / closing;
           if (t >= 0 && t < soonest) soonest = t;
+          // Which way the threat is coming from, weighted by how much threat it
+          // is. Speed is the weight because a slow bullet arriving from below
+          // is not the complaint -- a fast one is.
+          const sp = Math.hypot(b.vx, b.vy);
+          threat += sp;
+          if (b.vy < 0) rise += -b.vy;          // travelling up: it came from below
+          headX += b.vx; headY += b.vy;         // resultant, for the spread
         }
 
         nearNow.set(b.__id, [b.x, b.y, b.vx, b.vy]);
@@ -822,6 +894,16 @@ await page.evaluate(() => {
       laneLife: median(laneLives),
       stroom: median(stRooms),
       stfloor: stRooms.length ? Math.min(...stRooms) : 0,
+      // Share of the threat that is travelling up the screen at you, i.e. that
+      // arrived from below or from behind. 0 = everything falls on you from
+      // above, the way a player reads a bullet hell.
+      rise: threat ? rise / threat : 0,
+      // How much the threat AGREES about where it is going. The resultant of
+      // every near velocity over its total magnitude: 0 when they all travel
+      // the same way, 1 when they cancel out because they come from everywhere
+      // at once. This is the "and not from all directions" half of the note;
+      // `rise` is the "they all come from the top" half.
+      spread: threat ? 1 - Math.hypot(headX, headY) / threat : 0,
       aimed: aimedSeen ? aimedHits / aimedSeen : 0,
       aimRate: (aimedHits * 60) / frames,
       samples: { rooms: rooms.length, drifts: drifts.length, reacts: reacts.length },
@@ -918,6 +1000,7 @@ async function measure(b, ph, d) {
     drift: avg('drift'), react: avg('react'), warn: avg('warn'),
     lanes: avg('lanes'), laneW: avg('laneW'), laneLife: avg('laneLife'),
     stroom: avg('stroom'), stfloor: avg('stfloor'),
+    rise: avg('rise'), spread: avg('spread'),
     aimed: avg('aimed'), aimRate: avg('aimRate'),
   };
 }
@@ -949,8 +1032,8 @@ if (DETAIL) {
   const b = ONLY_BOSS === null ? 4 : ONLY_BOSS;
   const ph = ONLY_PHASE === null ? 0 : ONLY_PHASE;
   console.log(`${roster[b].name}  ${ph + 1}. ${roster[b].phases[ph]}\n`);
-  console.log('DIFFICULTY     room    tight    drift    react     warn    aimed  aim/sec     flux   clearance    reach   SAFETY  |  routes   lane   hold  |  st-room  st-min');
-  console.log('-'.repeat(168));
+  console.log('DIFFICULTY     room    tight    drift    react     warn    aimed  aim/sec     flux   clearance    reach   SAFETY  |  routes   lane   hold  |  st-room  st-min  |   rise  spread');
+  console.log('-'.repeat(186));
   for (let d = 0; d < 5; d++) {
     const m = await measure(b, ph, d);
     const clearance = Math.max(1, m.tight - m.drift);
@@ -970,12 +1053,13 @@ if (DETAIL) {
       `${safety(m).toFixed(1)}px`.padStart(9) +
       '  |' + `${m.lanes.toFixed(1)}`.padStart(8) +
       `${m.laneW.toFixed(1)}px`.padStart(7) + `${m.laneLife.toFixed(0)}f`.padStart(7) +
-      '  |' + `${m.stroom.toFixed(1)}px`.padStart(9) + `${m.stfloor.toFixed(1)}px`.padStart(8));
+      '  |' + `${m.stroom.toFixed(1)}px`.padStart(9) + `${m.stfloor.toFixed(1)}px`.padStart(8) +
+      '  |' + `${(m.rise * 100).toFixed(0)}%`.padStart(7) + `${(m.spread * 100).toFixed(0)}%`.padStart(8));
   }
 } else {
   console.log('BOSS          PHASE                       ' +
-    DIFFN.map((n) => n.slice(0, 4).padStart(9)).join('') + '   drift  aimed   warn');
-  console.log('-'.repeat(44 + 9 * 5 + 22));
+    DIFFN.map((n) => n.slice(0, 4).padStart(9)).join('') + '   drift  aimed   warn   rise spread');
+  console.log('-'.repeat(44 + 9 * 5 + 36));
 
   const rows = [];
   for (const b of bosses) {
@@ -984,7 +1068,7 @@ if (DETAIL) {
     for (const ph of phases) {
       const cells = [];
       const st = [];
-      let driftSum = 0, aimSum = 0, warnSum = 0;
+      let driftSum = 0, aimSum = 0, warnSum = 0, riseSum = 0, spreadSum = 0;
       for (let d = 0; d < 5; d++) {
         const m = await measure(b, ph, d);
         cells.push(safety(m));
@@ -992,6 +1076,8 @@ if (DETAIL) {
         driftSum += m.drift;
         aimSum += m.aimed;
         warnSum += m.warn;
+        riseSum += m.rise;
+        spreadSum += m.spread;
       }
       rows.push({
         boss: roster[b].name,
@@ -1006,7 +1092,9 @@ if (DETAIL) {
         cells.map((v) => `${v.toFixed(1)}`.padStart(9)).join('') +
         `${(driftSum / 5).toFixed(1)}px`.padStart(9) +
         `${(aimSum / 5 * 100).toFixed(0)}%`.padStart(7) +
-        `${(warnSum / 5).toFixed(0)}f`.padStart(7));
+        `${(warnSum / 5).toFixed(0)}f`.padStart(7) +
+        `${(riseSum / 5 * 100).toFixed(0)}%`.padStart(7) +
+        `${(spreadSum / 5 * 100).toFixed(0)}%`.padStart(7));
     }
   }
 

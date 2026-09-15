@@ -177,24 +177,51 @@ function* convergence(A) {
   // one bullet.
   const wave = A.gap(72);
 
-  // No bullet in this phase may simply appear on top of the player.
+  // THE WAVE CLOSES IN FROM ABOVE, not from all the way round.
   //
-  // borderPoint walks the whole perimeter, and a player spends most of a fight
-  // near the bottom edge, so a wave could put a kunai on the border directly
-  // beneath them with no travel at all. Measured: three frames between a
-  // Convergence bullet existing and being close enough to have to be dodged,
-  // against a 150-to-300 frame norm for every other pattern in the game. That
-  // is not a hard pattern, it is an unfair one, and it is exactly what a player
-  // described as "fast bullets that come from the bottom and the sides, much
-  // closer than the boss". Slide the spawn along the perimeter until the bullet
-  // has far enough to travel to be seen coming.
+  // This phase spawned on the whole perimeter, which is the literal reading of
+  // its name and the wrong one. A player named it in four run logs running, and
+  // the fourth said exactly what the problem is: "relatively fast bullets
+  // coming from all directions... in other levels there may be more and even
+  // faster bullets, but at least they all come from the top or at a top angle
+  // and not from all directions at once."
+  //
+  // That is not a complaint about difficulty, it is a complaint about ATTENTION.
+  // The boss is at the top, so that is where a player is looking; a wave that
+  // also comes from behind them asks them to watch two places at once, and no
+  // amount of room makes that readable. The sweep agrees now that it can see
+  // the axis: of twenty patterns only this one and Reflection put any of their
+  // threat on a heading that travels up the screen.
+  //
+  // So the arc is the top edge plus the upper part of each side. A ring closing
+  // from up there is still a ring closing on you -- the shape survives intact,
+  // and so does the squeeze, because the wave still arrives as one object. What
+  // goes is the half of it that arrives out of the player's blind side.
+  const DROP = 0.45;                    // how far down the sides a wave may start
+  const upperPoint = (u) => {
+    const side = PLAY.h * DROP;
+    const per = PLAY.w + 2 * side;
+    let d = (((u % 1) + 1) % 1) * per;
+    if (d < side) return { x: PLAY.x - 8, y: PLAY.y + side - d };
+    d -= side;
+    if (d < PLAY.w) return { x: PLAY.x + d, y: PLAY.y - 8 };
+    return { x: PLAY.right + 8, y: PLAY.y + (d - PLAY.w) };
+  };
+
+  // No bullet in this phase may simply appear on top of the player. The arc
+  // above already puts the whole wave a long way from where a player normally
+  // sits, but they are free to fly up into it, so the slide stays as the
+  // backstop: walk the spawn along the arc until the bullet has far enough to
+  // travel to be seen coming. Measured before any of this: three frames between
+  // a Convergence bullet existing and being close enough to dodge, against a
+  // 150-to-300 frame norm for everything else in the game.
   const CLEAR = 210;
   const spawnAt = (u0) => {
     let u = u0 % 1;
-    let p = A.borderPoint(u);
+    let p = upperPoint(u);
     for (let t = 0; t < 8 && Math.hypot(p.x - A.px, p.y - A.py) < CLEAR; t++) {
       u = (u + 0.125) % 1;
-      p = A.borderPoint(u);
+      p = upperPoint(u);
     }
     return p;
   };

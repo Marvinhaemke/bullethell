@@ -206,8 +206,23 @@ function* curveshot(A) {
   let k = 0;
   while (true) {
     const sgn = k % 2 ? 1 : -1;
-    const n = A.n(6, 4);
-    const aim = A.aimLead(undefined, undefined, 2.8);
+    const n = A.n(7, 4);
+    // THE FANS SWEEP, they do not aim.
+    //
+    // Four deaths an attempt in each of the last two Hard logs and six in the
+    // one before, with three of the last four to a curving fan -- and this was
+    // the last aimed volley of any size left in the game. A fan that is aimed,
+    // fast AND bending is three reflex taxes at once: you cannot pre-read it
+    // because it is aimed, you cannot react late because it is fast, and you
+    // cannot read it early because it bends. The player's note on why those are
+    // worth removing is in the README, and this is the clearest case of it.
+    //
+    // Swept instead, through the downward half: the crossfire is unchanged --
+    // two fans bending opposite ways is still the pattern -- but its heading
+    // now comes from a slow sine the player can watch, so where the next volley
+    // is going is a thing you know before it leaves. Count goes up in exchange,
+    // which is the trade the player asked for.
+    const aim = HALF_PI + Math.sin(k * 0.41) * 1.15;
 
     // `turn` is an angular rate, so the radius a bullet curves through is
     // speed/turn -- which means a fixed rate curls tighter at the difficulties
@@ -216,10 +231,10 @@ function* curveshot(A) {
     // Scaling with speed keeps the drawn shape the same on every difficulty.
     const curve = 0.021 * A.D.speed;
     const decay = 0.98;
-    // Every bullet in the volley curves, the one aimed straight at you
-    // included -- so aiming the fan at the player just guarantees it arrives
-    // somewhere else. Lead by half the total bend instead, and the arc sweeps
-    // through the aim point rather than away from it.
+    // Every bullet in the volley curves, so the heading a fan leaves on is not
+    // the heading it arrives on. Offsetting by half the total bend means the
+    // arc sweeps THROUGH the direction the sweep is pointing rather than away
+    // from it, which is what makes the sweep something you can read ahead.
     const bend = curve / (1 - decay);
 
     // Both fans always fire: bending the same volley two ways *is* the
@@ -229,9 +244,13 @@ function* curveshot(A) {
     // the faster it does that the less the reading is worth -- a Hard log put
     // five of this phase's six deaths on the 3.25px/frame outer fan. Curvature
     // is this pattern's whole identity, so the speed is what gives instead.
+    // 2.85 -> 2.45 on the outer fan. Two of the last four deaths here were
+    // this one bullet, and with the volley no longer aimed the speed is no
+    // longer doing the work of surprising you -- it is only shortening the
+    // window in which the sweep can be read.
     const arc = (v) => Math.min(A.spd(v), v * 1.05);
-    A.fan({ n, spread: 1.1, angle: aim - sgn * bend * 0.5, speed: arc(2.85), turn: sgn * curve, turnDecay: decay });
-    A.fan({ n, spread: 1.1, angle: aim + sgn * bend * 0.5, speed: arc(2.4), turn: -sgn * curve, turnDecay: decay, color: C.orange });
+    A.fan({ n, spread: 1.25, angle: aim - sgn * bend * 0.5, speed: arc(2.45), turn: sgn * curve, turnDecay: decay });
+    A.fan({ n, spread: 1.25, angle: aim + sgn * bend * 0.5, speed: arc(2.2), turn: -sgn * curve, turnDecay: decay, color: C.orange });
     if (A.L(2) && k % 2 === 0) {
       A.ring({ n: A.n(10, 7), speed: A.spd(1.9), angle: k * 0.5, shape: 'pellet', color: C.red, r: 4.2 });
     }

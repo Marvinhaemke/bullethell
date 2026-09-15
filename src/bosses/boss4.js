@@ -168,6 +168,8 @@ function* roseCurve(A) {
     // keeps its couple of seconds and the tiers above Normal buy extra samples
     // per frame instead of extra frames.
     const per = A.L(4) ? 3 : A.L(3) ? 2 : 1;
+    // How many times the rose is traced at once. See below.
+    const roses = A.L(4) ? 3 : A.L(3) ? 2 : 1;
     const steps = Math.min(132, A.n(112, 56)) * per;
     const amp = 128;
     const dir = cyc % 2 ? -1 : 1;
@@ -183,14 +185,41 @@ function* roseCurve(A) {
       if (A.L(2)) {
         A.one({ x: ex, y: ey, angle: out + HALF_PI, speed: A.spd(1.25), shape: 'pellet', r: 4, color: C.magenta, life: 430 });
       }
-      // The counter-strand arrives at Hard, not Lunatic. Doubling `per` above
-      // Normal only thickens the traced line -- adjacent samples fly nearly
-      // parallel, so it adds bullets without adding decisions -- and with the
-      // top tiers compressed that left Hard measurably LOOSER than Normal here,
-      // in a phase a log already had at zero deaths on Hard. A third strand
-      // going the other way is a route change rather than a thicker line.
-      if (A.L(3)) {
-        A.one({ x: ex, y: ey, angle: out - HALF_PI, speed: A.spd(1.25), shape: 'pellet', r: 4, color: C.rose, life: 430 });
+      // THE TOP TIERS TRACE THE SAME ROSE AGAIN, OUT OF PHASE -- and this is
+      // the clearest lesson in this file about what a third strand costs.
+      //
+      // What used to be here was a counter-strand fired at ninety degrees, and
+      // the round it spent at Hard is why it is gone. The reasoning for it was
+      // sound on its own terms: doubling `per` only thickens the traced line,
+      // adjacent samples fly nearly parallel, and that adds bullets without
+      // adding decisions, where a strand going the other way is a route change.
+      // What it missed is that two perpendicular strands leaving the same point
+      // sweep THROUGH each other, and a rose is a curve that folds back on
+      // itself, so the crossings do not scatter -- they line up. The player's
+      // report was exact: "there are now just some walls in it where you have
+      // to squeeze through small openings", and four of the five deaths that
+      // round were to these pellets. Zero deaths on Hard became five.
+      //
+      // A route change is worth more than a thicker line, but only if the
+      // routes stay open. So: trace the whole rose again, offset along its own
+      // parameter. Every bullet still leaves along its local radius, so two
+      // traces can no more cross each other than two spokes of a wheel can --
+      // what changes is that a second set of arms arrives between the first,
+      // which is a tight dodge on a shape the player already knows how to read.
+      for (let q = 1; q < roses; q++) {
+        const th2 = th + q * PI / (petals * (roses - 1));
+        const rr2 = amp * rose(th2, petals);
+        A.one({
+          x: A.bx + Math.cos(th2) * rr2, y: A.by + Math.sin(th2) * rr2,
+          angle: th2 + (rr2 < 0 ? PI : 0),
+          // Lunatic's third trace runs slower, so it lingers and its arms are
+          // still in the field when the next cycle's arrive. Slower is free of
+          // the usual cost here: these bullets all travel along rays from the
+          // boss, so two traces can no more cross at different speeds than at
+          // the same one -- what it buys is residency, not chaos.
+          speed: A.spd(q > 1 ? 1.4 : 1.95),
+          shape: 'diamond', r: 4.6, color: q > 1 ? C.rose : C.ice, life: 460,
+        });
       }
       A.mark(ex, ey, C.ice, 4);
       if (s % per === per - 1) yield 1;
@@ -206,7 +235,13 @@ function* roseCurve(A) {
     // the boss at 3.8 and 4.2px/frame with nothing to read. Nothing structural
     // used to arrive between Normal and Hard here either, so the second pass at
     // L(3) keeps that job.
-    const passes = A.L(3) ? 2 : A.L(1) ? 1 : 0;
+    // Lunatic gets a third. Trading its perpendicular counter-strand for a
+    // third trace of the rose cost it most of its difficulty -- three traces
+    // interleave evenly, so the pinch points they leave are no worse than two
+    // -- and this is where that goes back. The petal-tip volley is the most
+    // telegraphed thing in the phase: it leaves from arms the player has been
+    // watching draw themselves for two seconds.
+    const passes = A.L(4) ? 3 : A.L(3) ? 2 : A.L(1) ? 1 : 0;
     for (let pass = 0; pass < passes; pass++) {
       const m = A.n(petals * 3, petals);
       for (let i = 0; i < m; i++) {

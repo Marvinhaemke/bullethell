@@ -165,7 +165,10 @@ export class Attack {
       b.goSpin = o.goSpin || 0;
     }
     if (o.oscA) { b.oscA = o.oscA; b.oscF = o.oscF || 0.1; b.oscP = o.oscP || 0; }
-    if (o.bounce) b.bounce = o.bounce;
+    if (o.bounce) {
+      b.bounce = o.bounce;
+      if (o.floorBounce === false) b.floorBounce = false;
+    }
     if (o.split) {
       b.split = o.split;
       b.splitGen = o.split.gen || 1;
