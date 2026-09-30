@@ -2,6 +2,7 @@
 
 import { VIEW } from './config.js';
 import { Game } from './game.js';
+import { BOSSES } from './bosses/index.js';
 import { setSpriteScale } from './sprites.js';
 
 const STEP_MS = 1000 / 60;
@@ -80,4 +81,4 @@ requestAnimationFrame(frame);
 window.addEventListener('pagehide', () => game.log.endRun('closed'));
 
 // Handy for debugging and for the automated smoke test.
-window.__BOSSRUSH = { game, VIEW };
+window.__BOSSRUSH = { game, VIEW, BOSSES };

@@ -3,7 +3,8 @@
 import { TAU, clamp } from './mathx.js';
 import { PLAY, C } from './config.js';
 import { Attack } from './attack.js';
-import { drawShape } from './sprites.js';
+import { drawShape, gemSprite, blit, tint } from './sprites.js';
+import { shatterPanes, SPECTRUM } from './panes.js';
 
 /**
  * Steps a pattern generator. Scripts communicate by yielding a frame count:
@@ -105,6 +106,7 @@ export class Boss {
 
     g.bullets.clearArea(g, this.x, this.y, 0);
     g.lasers.length = 0;
+    shatterPanes(g);
     g.addShake(14);
     g.sfx.play('defeat');
     g.particles.ring(this.x, this.y, this.def.color, 30, 16, 34, 5);
@@ -166,12 +168,21 @@ export class Boss {
     }
   }
 
+  /**
+   * The boss as a gem: a faceted heart in its own colour, a ring of crystal
+   * shards orbiting it, and a halo of light.
+   *
+   * The outer shards are the phase counter -- one per pattern still to come,
+   * this one included -- so the thing visibly loses a crystal every time a
+   * phase breaks. It used to be a ring of dots doing the same job; a shard
+   * that was there and is now a burst of fragments says it louder.
+   */
   draw(g) {
     if (this.state === 'dead' && this.stateT > 60) return;
 
     const def = this.def;
     const hurt = this.flash > 0;
-    const pulse = 1 + Math.sin(this.stateT * 0.06) * 0.05;
+    const pulse = 1 + Math.sin(this.stateT * 0.06) * 0.04;
     const scale = this.state === 'break'
       ? 1 + Math.sin(this.stateT * 0.5) * 0.12
       : this.state === 'dead'
@@ -182,57 +193,68 @@ export class Boss {
     g.translate(this.x, this.y);
     g.scale(scale, scale);
 
-    // Outer aura.
-    const auraR = 52 + Math.sin(this.stateT * 0.04) * 5;
-    const grad = g.createRadialGradient(0, 0, 4, 0, 0, auraR);
-    grad.addColorStop(0, hexAlpha(def.color, 0.30));
+    // Halo: light the heart throws on the stone around it.
+    const auraR = 64 + Math.sin(this.stateT * 0.04) * 6;
+    const grad = g.createRadialGradient(0, 0, 6, 0, 0, auraR);
+    grad.addColorStop(0, hexAlpha(def.color, 0.34));
+    grad.addColorStop(0.45, hexAlpha(def.accent, 0.10));
     grad.addColorStop(1, hexAlpha(def.color, 0));
     g.fillStyle = grad;
     g.beginPath();
     g.arc(0, 0, auraR, 0, TAU);
     g.fill();
 
-    // Counter-rotating shells.
+    // The boss's own silhouette shells, kept as faint cut-glass outlines: they
+    // are how each boss is recognised at a glance, crystal or not.
     const shells = def.rings || ['hex', 'circle'];
     for (let i = 0; i < shells.length; i++) {
       const dir = i % 2 ? -1 : 1;
       g.save();
       g.rotate(this.spin * dir * (1 + i * 0.6));
-      g.globalAlpha = 0.55 - i * 0.12;
-      drawShape(g, shells[i], 44 - i * 12, null, hurt ? '#ffffff' : def.accent, 2.2);
+      g.globalAlpha = 0.34 - i * 0.08;
+      drawShape(g, shells[i], 50 - i * 12, null, hurt ? '#ffffff' : tint(def.accent, 0.2), 1.4);
+      g.globalAlpha *= 0.5;
+      drawShape(g, shells[i], 53 - i * 12, null, def.accent, 0.8);
       g.restore();
     }
 
-    // Tick marks orbiting the core, one per remaining phase.
-    const left = this.totalPhases - this.phaseIndex;
-    g.globalAlpha = 0.85;
-    for (let i = 0; i < left; i++) {
-      const a = this.spin * -1.7 + i * TAU / Math.max(1, left);
-      g.fillStyle = def.accent;
-      g.beginPath();
-      g.arc(Math.cos(a) * 34, Math.sin(a) * 34, 3, 0, TAU);
-      g.fill();
+    // Inner ring: six small stones counter-rotating close to the heart. A
+    // boss made of clear crystal (`spectrum`) throws a rainbow instead.
+    for (let i = 0; i < 6; i++) {
+      const a = -this.spin * 2.2 + i * TAU / 6;
+      const col = def.spectrum ? SPECTRUM[i] : def.accent;
+      blit(g, gemSprite('diamond', col, 4.2), Math.cos(a) * 30, Math.sin(a) * 30, a);
     }
-    g.globalAlpha = 1;
 
-    // Core.
-    g.save();
-    g.rotate(-this.spin * 0.8);
-    g.shadowColor = def.color;
-    g.shadowBlur = hurt ? 34 : 20;
-    drawShape(g, def.shape, 22, hurt ? '#ffffff' : def.color, '#ffffff', 1.6);
-    g.shadowBlur = 0;
-    g.restore();
+    // Outer ring: one shard per pattern left, pointing outward.
+    const left = this.totalPhases - this.phaseIndex;
+    const shard = gemSprite('kunai', def.color, 7.5);
+    for (let i = 0; i < left; i++) {
+      const a = this.spin * 1.3 + i * TAU / Math.max(1, left);
+      const rr = 42 + Math.sin(this.stateT * 0.05 + i) * 2;
+      blit(g, shard, Math.cos(a) * rr, Math.sin(a) * rr, a);
+    }
 
-    // Invulnerable survival phases get a locked-shield indicator.
+    // The heart.
+    const rot = -this.spin * 0.8;
+    blit(g, gemSprite(def.shape, def.color, 22, { glow: 16 }), 0, 0, rot);
+    if (hurt) {
+      // A hit brightens the stone rather than replacing it. Capped well short
+      // of white on purpose: autofire lands every frame in a real fight, so
+      // `flash` sits near its maximum for the whole phase, and a full whiteout
+      // meant the boss was a white blob from the first shot to the last.
+      g.globalAlpha = Math.min(0.38, this.flash / 20);
+      blit(g, gemSprite(def.shape, '#ffffff', 22, { glow: 20 }), 0, 0, rot);
+      g.globalAlpha = 1;
+    }
+
+    // Invulnerable survival phases: a cage of six crystal panes.
     if (this.state === 'fight' && this.phase && this.phase.survival) {
-      g.strokeStyle = C.white;
-      g.globalAlpha = 0.35 + 0.25 * Math.sin(this.stateT * 0.15);
-      g.lineWidth = 2;
+      const pane = gemSprite('bar', C.ice, 6, { glass: true, glow: 8 });
+      g.globalAlpha = 0.55 + 0.25 * Math.sin(this.stateT * 0.15);
       for (let i = 0; i < 6; i++) {
-        g.beginPath();
-        g.arc(0, 0, 60, this.spin * 2 + i * TAU / 6, this.spin * 2 + i * TAU / 6 + 0.6);
-        g.stroke();
+        const a = this.spin * 2 + i * TAU / 6;
+        blit(g, pane, Math.cos(a) * 64, Math.sin(a) * 64, a + Math.PI / 2);
       }
       g.globalAlpha = 1;
     }

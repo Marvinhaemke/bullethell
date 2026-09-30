@@ -112,9 +112,9 @@ await page.evaluate(() => {
 });
 
 const roster = await page.evaluate(() => {
-  const { game } = window.__BOSSRUSH;
+  const { game, BOSSES } = window.__BOSSRUSH;
   const out = [];
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     game.debugStart(b, 2, 0);
     out.push({
       name: game.boss.def.name,

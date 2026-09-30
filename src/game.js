@@ -15,9 +15,10 @@ import { SHIPS, shipAt } from './ships.js';
 import { Autopilot } from './autopilot.js';
 import { Boss, hexAlpha } from './boss.js';
 import { BOSSES } from './bosses/index.js';
+import { Backdrop } from './backdrop.js';
 import { loadSettings, saveSettings, submitRecord, getRecord } from './storage.js';
 import { text, panel, pips, Menu, fadeRect } from './ui.js';
-import { drawShape } from './sprites.js';
+import { drawShape, gemSprite, blit, tint } from './sprites.js';
 
 const BOMB_RADIUS_MAX = 340;
 
@@ -36,6 +37,7 @@ export class Game {
     this.bullets = new BulletPool();
     this.particles = new Particles();
     this.lasers = [];
+    this.panes = [];      // crystal panes: see panes.js
     this.player = new Player(this);
     this.autopilot = new Autopilot(this);
     this.boss = null;
@@ -49,7 +51,7 @@ export class Game {
     this.stateT = 0;
     this.run = null;
     this.bomb = null;
-    this.starfield = makeStarfield();
+    this.backdrop = new Backdrop();
     this.fps = 60;
     this.dpr = 1;               // set by the host on resize
     this.logNote = '';
@@ -179,7 +181,7 @@ export class Game {
     };
 
     this.mainMenu = new Menu([
-      { label: 'START BOSS RUSH', action: () => this.startRun('rush', 0), hint: 'All five bosses back to back.' },
+      { label: 'START BOSS RUSH', action: () => this.startRun('rush', 0), hint: 'All six bosses back to back.' },
       { label: 'BOSS SELECT', action: () => this.setScene('select'), hint: 'Practise any single boss.' },
       { separator: true },
       diffItem,
@@ -281,6 +283,7 @@ export class Game {
       this.bullets.clear();
       this.particles.clear();
       this.lasers.length = 0;
+      this.panes.length = 0;
       this.bomb = null;
     }
   }
@@ -329,6 +332,7 @@ export class Game {
     this.bullets.clear();
     this.particles.clear();
     this.lasers.length = 0;
+    this.panes.length = 0;
     this.bomb = null;
     this.player.reset(true);
     this.boss = new Boss(this, BOSSES[index]);
@@ -366,6 +370,7 @@ export class Game {
     this.addScore(SCORE.bossClear);
     this.bullets.clearArea(this, 0, 0, 0);
     this.lasers.length = 0;
+    this.panes.length = 0;
     this.addShake(20);
     this.flash = 0.7;
     this.sfx.play('defeat');
@@ -540,6 +545,7 @@ export class Game {
       l.update();
       if (!l.alive) { this.lasers.splice(i, 1); i--; }
     }
+    for (let i = 0; i < this.panes.length; i++) this.panes[i].update();
   }
 
   updateBomb() {
@@ -656,38 +662,11 @@ export class Game {
   }
 
   /**
-   * Faint drifting grid + parallax dots so the black is not featureless.
-   * Menus pass the full viewport; the fight clips it to the playfield.
+   * The geode: see backdrop.js. Menus pass the full viewport; the fight clips
+   * it to the playfield.
    */
   drawBackdrop(g, t, rect) {
-    const R = rect || PLAY;
-    const right = R.x + R.w, bottom = R.y + R.h;
-    g.save();
-    g.beginPath();
-    g.rect(R.x, R.y, R.w, R.h);
-    g.clip();
-
-    g.strokeStyle = 'rgba(40,58,102,0.20)';
-    g.lineWidth = 1;
-    const step = 56;
-    const off = (t * 0.35) % step;
-    g.beginPath();
-    for (let x = R.x - step; x < right + step; x += step) {
-      g.moveTo(x + 0.5, R.y); g.lineTo(x + 0.5, bottom);
-    }
-    for (let y = R.y + off - step; y < bottom + step; y += step) {
-      g.moveTo(R.x, y + 0.5); g.lineTo(right, y + 0.5);
-    }
-    g.stroke();
-
-    for (let i = 0; i < this.starfield.length; i++) {
-      const s = this.starfield[i];
-      const x = R.x + (s.x % R.w);
-      const y = R.y + ((s.y + t * s.sp) % R.h);
-      g.fillStyle = `rgba(150,180,255,${s.a})`;
-      g.fillRect(x, y, s.r, s.r);
-    }
-    g.restore();
+    this.backdrop.draw(g, t, rect || PLAY, this.dpr);
   }
 
   /** Full-viewport backdrop for the menu scenes. */
@@ -710,6 +689,7 @@ export class Game {
     g.rect(PLAY.x, PLAY.y, PLAY.w, PLAY.h);
     g.clip();
 
+    for (let i = 0; i < this.panes.length; i++) this.panes[i].draw(g, t);
     if (this.boss) this.boss.draw(g);
     for (let i = 0; i < this.lasers.length; i++) this.lasers[i].draw(g);
     this.player.drawShots(g);
@@ -721,10 +701,18 @@ export class Game {
     g.restore();
     g.restore();
 
-    // Playfield frame.
-    g.strokeStyle = '#1d2740';
+    // Playfield frame: a thin edge of violet glass with a stone set at each
+    // corner.
+    g.strokeStyle = '#2b2458';
     g.lineWidth = 1;
     g.strokeRect(PLAY.x - 0.5, PLAY.y - 0.5, PLAY.w + 1, PLAY.h + 1);
+    g.strokeStyle = 'rgba(170,150,255,0.10)';
+    g.strokeRect(PLAY.x - 2.5, PLAY.y - 2.5, PLAY.w + 5, PLAY.h + 5);
+    const corner = gemSprite('diamond', C.violet, 3.4, { glow: 5 });
+    blit(g, corner, PLAY.x - 1, PLAY.y - 1);
+    blit(g, corner, PLAY.right + 1, PLAY.y - 1);
+    blit(g, corner, PLAY.x - 1, PLAY.bottom + 1);
+    blit(g, corner, PLAY.right + 1, PLAY.bottom + 1);
 
     if (this.boss) {
       this.drawBossBar(g);
@@ -781,13 +769,25 @@ export class Game {
           : clamp(boss.hp / boss.hpMax, 0, 1))
         : done ? 0 : 1;
       const sx = x + i * segW;
-      g.fillStyle = '#0e1424';
+      g.fillStyle = '#0c0a1e';
       g.fillRect(sx + 1, y, segW - 2, 7);
       if (frac > 0) {
-        g.fillStyle = cur ? (survival ? C.ice : boss.def.color) : '#2a3655';
-        g.fillRect(sx + 1, y, (segW - 2) * frac, 7);
+        const fw = (segW - 2) * frac;
+        const col = cur ? (survival ? C.ice : boss.def.color) : '#2c2a5c';
+        g.fillStyle = col;
+        g.fillRect(sx + 1, y, fw, 7);
+        if (cur) {
+          // Lit crystal: a bright upper facet, a dark lower one, and a hot
+          // leading edge where the bar is being cut back.
+          g.fillStyle = tint(col, 0.55, 0.7);
+          g.fillRect(sx + 1, y, fw, 2);
+          g.fillStyle = 'rgba(0,0,0,0.25)';
+          g.fillRect(sx + 1, y + 5, fw, 2);
+          g.fillStyle = '#ffffff';
+          g.fillRect(sx + fw, y - 1, 1.5, 9);
+        }
       }
-      g.strokeStyle = cur ? hexAlpha(boss.def.color, 0.7) : '#1e2740';
+      g.strokeStyle = cur ? hexAlpha(boss.def.color, 0.7) : '#231f45';
       g.lineWidth = 1;
       g.strokeRect(sx + 1.5, y + 0.5, segW - 3, 6);
     }
@@ -862,10 +862,7 @@ export class Game {
       const done = run && run.order.indexOf(i) !== -1 && run.order.indexOf(i) < run.slot;
       const yy = y + i * 26;
       g.globalAlpha = active ? 1 : done ? 0.55 : 0.3;
-      g.save();
-      g.translate(x + 11, yy + 9);
-      drawShape(g, b.shape, 7, active ? b.color : null, b.color, 1.4);
-      g.restore();
+      blit(g, gemSprite(b.shape, b.color, 7, { glow: active ? 8 : 0 }), x + 11, yy + 9);
       text(g, b.name, x + 26, yy + 13, { size: 11, weight: active ? 700 : 400, color: active ? C.white : C.dust, track: 1 });
       if (done) text(g, '✓', x + w - 8, yy + 13, { size: 12, align: 'right', color: C.green });
       g.globalAlpha = 1;
@@ -936,9 +933,35 @@ export class Game {
 
     text(g, 'BULLET HELL', VIEW.w / 2, 250,
       { size: 22, align: 'center', color: C.cyan, track: 14 });
+    // The title as cut crystal: lit white across the top of the letters,
+    // falling through ice to amethyst at the base, over a violet glow.
+    const face = g.createLinearGradient(0, 330 - 62, 0, 336);
+    face.addColorStop(0, '#ffffff');
+    face.addColorStop(0.42, '#dff4ff');
+    face.addColorStop(0.58, '#a9c6ff');
+    face.addColorStop(1, '#9a74ff');
     text(g, 'BOSS RUSH', VIEW.w / 2, 330,
-      { size: 78, weight: 700, align: 'center', color: C.white, track: 10, glow: C.blue, glowSize: 30 });
-    text(g, 'FIVE BOSSES · TWENTY ALGORITHMIC PATTERNS · FIVE DIFFICULTIES',
+      { size: 78, weight: 700, align: 'center', color: face, track: 10, glow: C.violet, glowSize: 34 });
+    // A glint that runs across the title every few seconds.
+    const sweep = (t % 360) / 360;
+    if (sweep < 0.35) {
+      const gx = VIEW.w / 2 - 330 + sweep / 0.35 * 660;
+      const gl = gemSprite('star4', '#ffffff', 7, { glow: 8 });
+      g.globalAlpha = Math.sin(sweep / 0.35 * Math.PI) * 0.9;
+      blit(g, gl, gx, 276 + Math.sin(sweep * 20) * 4, sweep * 6);
+      g.globalAlpha = 1;
+    }
+    // A soft band of shadow under the subtitle, so an orbiting stone passing
+    // behind it cannot wash it out.
+    // Solid across the whole line of text, fading only beyond its ends.
+    const band = g.createLinearGradient(VIEW.w / 2 - 450, 0, VIEW.w / 2 + 450, 0);
+    band.addColorStop(0, 'rgba(4,3,14,0)');
+    band.addColorStop(0.12, 'rgba(4,3,14,0.72)');
+    band.addColorStop(0.88, 'rgba(4,3,14,0.72)');
+    band.addColorStop(1, 'rgba(4,3,14,0)');
+    g.fillStyle = band;
+    g.fillRect(VIEW.w / 2 - 450, 356, 900, 24);
+    text(g, 'SIX BOSSES · TWENTY-FOUR ALGORITHMIC PATTERNS · FIVE DIFFICULTIES',
       VIEW.w / 2, 372, { size: 12, align: 'center', color: C.dust, track: 3 });
 
     if ((t >> 5) % 2 === 0) {
@@ -950,23 +973,27 @@ export class Game {
   }
 
   drawTitleOrnament(g, t) {
-    // A live sample of the boss shapes orbiting the title.
-    g.save();
-    g.translate(VIEW.w / 2, 300);
-    for (let i = 0; i < BOSSES.length; i++) {
-      const b = BOSSES[i];
+    // Every boss's heart, orbiting the title as a cut stone. The orbit is an
+    // ellipse seen from slightly above, so the stones at the back are drawn
+    // first, smaller and dimmer, and pass behind the ones at the front.
+    const cx = VIEW.w / 2, cy = 300;
+    const order = BOSSES.map((b, i) => {
       const a = t * 0.006 + i * TAU / BOSSES.length;
-      const r = 300 + Math.sin(t * 0.01 + i) * 26;
-      g.save();
-      g.translate(Math.cos(a) * r, Math.sin(a) * r * 0.55);
-      g.rotate(t * 0.01 * (i % 2 ? -1 : 1));
-      g.globalAlpha = 0.55;
-      drawShape(g, b.shape, 18, null, b.color, 1.6);
-      g.globalAlpha = 0.2;
-      drawShape(g, b.shape, 30, null, b.accent, 1);
-      g.restore();
+      return { b, i, a, depth: Math.sin(a) };
+    }).sort((p, q) => p.depth - q.depth);
+    for (const o of order) {
+      const r = 300 + Math.sin(t * 0.01 + o.i) * 26;
+      const x = cx + Math.cos(o.a) * r, y = cy + Math.sin(o.a) * r * 0.55;
+      const near = (o.depth + 1) / 2;           // 0 at the back, 1 at the front
+      g.globalAlpha = 0.35 + 0.55 * near;
+      const halo = g.createRadialGradient(x, y, 2, x, y, 46);
+      halo.addColorStop(0, hexAlpha(o.b.color, 0.22 * near));
+      halo.addColorStop(1, hexAlpha(o.b.color, 0));
+      g.fillStyle = halo;
+      g.beginPath(); g.arc(x, y, 46, 0, TAU); g.fill();
+      blit(g, gemSprite(o.b.shape, o.b.color, 22, { glow: 16 }), x, y,
+        t * 0.01 * (o.i % 2 ? -1 : 1), 0.62 + 0.4 * near);
     }
-    g.restore();
     g.globalAlpha = 1;
   }
 
@@ -999,10 +1026,13 @@ export class Game {
       text(g, d.name, px + 16, yy, { size: 12, weight: on ? 700 : 400, color: d.color, track: 1 });
       // Layer dots show how many optional sub-patterns switch on.
       for (let k = 0; k < 4; k++) {
-        g.beginPath();
-        g.arc(px + 140 + k * 13, yy - 4, 3.4, 0, TAU);
-        if (k < d.layers) { g.fillStyle = d.color; g.fill(); }
-        else { g.strokeStyle = '#333d5a'; g.lineWidth = 1; g.stroke(); }
+        if (k < d.layers) {
+          blit(g, gemSprite('circle', d.color, 3.6, { glow: on ? 5 : 0 }), px + 140 + k * 13, yy - 4);
+        } else {
+          g.beginPath();
+          g.arc(px + 140 + k * 13, yy - 4, 3.4, 0, TAU);
+          g.strokeStyle = '#322a58'; g.lineWidth = 1; g.stroke();
+        }
       }
       text(g, '×' + d.density.toFixed(2), px + 248, yy, { size: 10, align: 'right', color: '#7d8db3' });
       g.globalAlpha = 1;
@@ -1032,13 +1062,7 @@ export class Game {
     panel(g, px, py, 264, 140);
     text(g, 'ARMAMENT', px + 16, py + 24, { size: 10, color: '#63719a', track: 2 });
 
-    g.save();
-    g.translate(px + 232, py + 26);
-    g.rotate(-Math.PI / 2);
-    g.shadowColor = ship.color; g.shadowBlur = 14;
-    drawShape(g, ship.shape, 11, '#0b1524', ship.color, 1.6);
-    g.shadowBlur = 0;
-    g.restore();
+    blit(g, gemSprite(ship.shape, ship.color, 12, { glass: true, glow: 10 }), px + 232, py + 26, -Math.PI / 2);
 
     text(g, ship.name, px + 16, py + 48, { size: 17, weight: 700, color: ship.color, track: 3 });
 
@@ -1071,17 +1095,26 @@ export class Game {
     g.save();
     g.translate(px + 145, py + 100);
     const t = this.sceneT;
+    const halo = g.createRadialGradient(0, 0, 8, 0, 0, 86);
+    halo.addColorStop(0, hexAlpha(b.color, 0.28));
+    halo.addColorStop(1, hexAlpha(b.color, 0));
+    g.fillStyle = halo;
+    g.beginPath(); g.arc(0, 0, 86, 0, TAU); g.fill();
     for (let i = 0; i < 2; i++) {
       g.save();
       g.rotate(t * 0.012 * (i ? -1 : 1));
-      g.globalAlpha = 0.6 - i * 0.25;
-      drawShape(g, (b.rings || ['hex'])[i % (b.rings || ['hex']).length], 52 - i * 14, null, b.accent, 2);
+      g.globalAlpha = 0.45 - i * 0.15;
+      drawShape(g, (b.rings || ['hex'])[i % (b.rings || ['hex']).length], 60 - i * 14, null, b.accent, 1.5);
       g.restore();
     }
     g.globalAlpha = 1;
-    g.shadowColor = b.color; g.shadowBlur = 22;
-    drawShape(g, b.shape, 26, b.color, C.white, 1.5);
-    g.shadowBlur = 0;
+    // One shard per pattern, as on the boss in the fight.
+    const shard = gemSprite('kunai', b.color, 9);
+    for (let i = 0; i < b.phases.length; i++) {
+      const a = t * 0.015 + i * TAU / b.phases.length;
+      blit(g, shard, Math.cos(a) * 50, Math.sin(a) * 50, a);
+    }
+    blit(g, gemSprite(b.shape, b.color, 28, { glow: 20 }), 0, 0, -t * 0.008);
     g.restore();
 
     text(g, b.name, px + 145, py + 200, { size: 22, weight: 700, align: 'center', color: C.white, track: 3 });
@@ -1230,16 +1263,3 @@ function fmtTime(frames) {
   return `${m}:${r.toFixed(2).padStart(5, '0')}`;
 }
 
-function makeStarfield() {
-  const stars = [];
-  for (let i = 0; i < 90; i++) {
-    stars.push({
-      x: Math.random() * PLAY.w,
-      y: Math.random() * PLAY.h,
-      sp: 0.12 + Math.random() * 0.5,
-      r: Math.random() < 0.8 ? 1 : 2,
-      a: 0.08 + Math.random() * 0.22,
-    });
-  }
-  return stars;
-}

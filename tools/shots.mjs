@@ -44,9 +44,9 @@ await shot('03-help');
 
 // --- every phase ---
 const phases = await page.evaluate(() => {
-  const { game } = window.__BOSSRUSH;
+  const { game, BOSSES } = window.__BOSSRUSH;
   const list = [];
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     game.debugStart(b, 2, 0);
     game.boss.def.phases.forEach((p, i) => list.push({ b, i, boss: game.boss.def.id, name: p.name }));
   }

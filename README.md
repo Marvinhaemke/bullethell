@@ -1,11 +1,33 @@
 # Bullet Hell — Boss Rush
 
-A canvas bullet-hell boss rush built from basic shapes on black. Five bosses,
-twenty patterns, and every bullet curtain generated algorithmically — cellular
+A canvas bullet-hell boss rush cut from crystal. Six bosses, twenty-four
+patterns, and every bullet curtain generated algorithmically — cellular
 automata, logistic-map chaos, polar rose curves, phyllotaxis, logarithmic
-spirals, recursive splitting and ballistic arcs — rather than hand-placed.
+spirals, recursive splitting, ballistic arcs, growing snowflakes and Snell's-law
+refraction — rather than hand-placed.
 
-No dependencies, no build step, no assets. Plain ES modules and a 2D canvas.
+No dependencies, no build step, no assets. Plain ES modules and a 2D canvas:
+every gem is cut in code the first time it is needed, so the game ships
+without a single image file.
+
+## The look
+
+Every bullet is a **faceted gem** — step-cut squares and diamonds, brilliant-cut
+orbs, kunai as crystal shards — shaded from one fixed light, so a whole curtain
+reads as one lit material rather than as flat stickers. The field is the inside
+of a geode: crystal formations growing in from the walls, a faint triangular
+lattice (the unit cell of a crystal) drifting behind everything, dust catching
+the light. Bosses are cut gems ringed by shards, one shard per pattern left, and
+a phase break shatters one.
+
+None of that is allowed to cost readability, and the rules for it are in the
+code where they apply: every gem keeps a **bright core**, so the lethal centre
+reads first at any size; the hitbox is the same fraction of a bullet's radius it
+always was; a gem only *twinkles* on a slow per-bullet clock, so a curtain glitters
+rather than flickers; the smallest pellets never glint at all, because a glint
+the size of the bullet reads as a second bullet; and the backdrop's brightest
+pixel is far darker than the dimmest bullet, with the crystal walls kept to the
+edges where patterns are thinnest.
 
 ![Rule 30 pattern](docs/rule-thirty.png)
 
@@ -140,7 +162,32 @@ at wherever you happen to be standing.
 
 ![Phyllotaxis](docs/phyllotaxis.png)
 
-### 5 · CHAOS ENGINE — *Deterministic Ruin*
+### 5 · PRISM — *Refraction & Growth*
+Crystal optics, built on the one kind of mid-flight course change this game
+allows. It raises panes of glass across the field, and a bullet crossing into one obeys
+**Snell's law**: it bends toward the vertical and slows by the same ratio —
+which is exactly what keeps a ring a coherent wavefront on the far side, so
+rings come through as ripples that flatten as they enter the glass. Then
+snowflakes: seeds thrown to fixed sites nucleate flakes that *grow* — every
+point leaves the seed at a speed proportional to how far out it sits, and all of
+them decelerate to rest together, a homothety, so a flake is its own shape at
+every instant, only larger — then freeze, shimmer, and fall rigid, one after
+another in a cascade. White light split by the glass into a spectrum, red to
+violet, violet always nearest the vertical because it bends most, as in a real
+prism. And last, the boss inside the crystal: light *leaving* glass bends away
+from the vertical and past the critical angle (41.8° here) cannot leave at all,
+so the pane is a mirror everywhere except a window beneath the boss — **Snell's
+window**, the disc of sky a diver sees looking up — and the glass rocks, swinging
+the fan of light that escapes.
+
+The bend is legal for the reason [Delayed Theorem's snap](#what-a-good-pattern-does)
+is: it happens at a line drawn on the screen, by one rule, well above where the
+player stands, and below the glass everything flies straight again. From where
+you are, a pane is a line of emitters.
+
+![Dendrite](docs/dendrite.png)
+
+### 6 · CHAOS ENGINE — *Deterministic Ruin*
 The finale. Firing angles taken from iterates of the logistic map at r = 3.94 —
 fully deterministic, never periodic. Rotating beam sweeps over a pellet curtain.
 Three emitters riding Lissajous curves across the field. Bullets converging
@@ -716,7 +763,7 @@ add a `for` field to its entry:
 }
 ```
 
-Valid values are `menu`, `boss1` … `boss5` and `results`. A scene with nothing
+Valid values are `menu`, `boss1` … `boss6` and `results`. A scene with nothing
 pinned to it falls back to the rotation, so pinning some tracks and not others
 works fine. `"loop": false` plays an entry once instead of looping.
 
@@ -874,13 +921,16 @@ src/
   attack.js         the pattern-authoring API (A.ring, A.fan, A.polyRing, ...)
   patterns.js       shared movement scripts, cellular automata, logistic map
   bullets.js        data-driven bullet pool
+  panes.js          crystal panes: Snell's-law refraction, reflection, dispersion
+  sprites.js        faceted gem sprites, cached per shape, colour and size
+  backdrop.js       the geode: crystal walls, lattice, dust
   autopilot.js      the dodging bot: in-game autopilot and test harness
   ships.js          the ship roster, as weapon-component data
   music.js          streams whatever mp3s are in music/
   runlog.js         the run log: deaths, pattern attempts, runs
-  player.js  lasers.js  particles.js  sprites.js
+  player.js  lasers.js  particles.js
   ui.js  input.js  audio.js  storage.js  config.js  mathx.js  rng.js
-  bosses/boss1..5.js
+  bosses/boss1..6.js
 musicscan.py        the music manifest scanner, shared by serve.py and build.py
 tools/
   smoke.mjs         headless play-through of every boss at every difficulty
@@ -905,7 +955,7 @@ npm run survive     # can a player actually dodge each pattern?
 npm run margins     # how much dodging room each pattern really has
 npm run difficulty  # ...and how much of that room you can rely on
 npm run deadzones   # can you park anywhere and ignore a pattern -- or shelter there?
-npm run autopsy -- --boss 5 --phase 4   # why is this phase hard?
+npm run autopsy -- --boss 6 --phase 4   # why is this phase hard?
 npm run deaths -- --bot                # what actually kills the bot
 npm run bot         # autopilot quality: survival, gap width, idle drift
 npm run ships       # is every ship worth picking?

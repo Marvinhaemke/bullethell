@@ -32,20 +32,18 @@ await page.waitForFunction(() => !!window.__BOSSRUSH);
 const diffs = ONLY_DIFF === null ? [0, 2, 4] : [ONLY_DIFF];
 
 const rows = await page.evaluate(async ({ frames, diffs }) => {
-  const { game } = window.__BOSSRUSH;
-  const BOSSES = game.constructor;
-  void BOSSES;
+  const { game, BOSSES } = window.__BOSSRUSH;
   const out = [];
 
   // Reach into the live roster through a started run.
   game.debugStart(0, 2, 0);
   const roster = [];
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     game.debugStart(b, 2, 0);
     roster.push({ name: game.boss.def.name, phases: game.boss.def.phases.map((p) => p.name) });
   }
 
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     for (let ph = 0; ph < roster[b].phases.length; ph++) {
       for (const d of diffs) {
         game.debugStart(b, d, 0);

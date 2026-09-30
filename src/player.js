@@ -2,7 +2,7 @@
 
 import { TAU, PI, HALF_PI, clamp } from './mathx.js';
 import { PLAY, C } from './config.js';
-import { drawShape } from './sprites.js';
+import { gemSprite, blit } from './sprites.js';
 import { shipAt } from './ships.js';
 
 const SPEED_FREE = 4.55;
@@ -203,15 +203,24 @@ export class Player {
     // seeing your own fire.
     const alpha = this.game.settings.shotAlpha;
     if (alpha <= 0) return;
+    // Crystal needles: a coloured shaft with a white core down its length.
     g.lineCap = 'round';
     for (let i = 0; i < this.shotN; i++) {
       const s = this.shots[i];
+      const tx = s.x - s.vx * 0.55, ty = s.y - s.vy * 0.55;
       g.strokeStyle = s.color;
-      g.globalAlpha = alpha;
+      g.globalAlpha = alpha * 0.9;
       g.lineWidth = s.r;
       g.beginPath();
       g.moveTo(s.x, s.y);
-      g.lineTo(s.x - s.vx * 0.55, s.y - s.vy * 0.55);
+      g.lineTo(tx, ty);
+      g.stroke();
+      g.strokeStyle = '#ffffff';
+      g.globalAlpha = alpha * 0.85;
+      g.lineWidth = Math.max(1, s.r * 0.36);
+      g.beginPath();
+      g.moveTo(s.x, s.y);
+      g.lineTo(s.x - s.vx * 0.3, s.y - s.vy * 0.3);
       g.stroke();
     }
     g.globalAlpha = 1;
@@ -223,45 +232,62 @@ export class Player {
 
     const ship = shipAt(this.game.settings.ship);
     const blink = this.invuln > 0 && (this.pulse >> 2) % 2 === 0;
+    const base = blink ? 0.45 : 1;
     g.save();
     g.translate(this.x, this.y);
-    g.globalAlpha = blink ? 0.45 : 1;
+    g.globalAlpha = base;
 
-    // Focus aura: counter-rotating brackets that tighten as you slow down.
+    // Focus aura: two counter-rotating rings of small stones that tighten in
+    // as you slow down. Stones rather than the old brackets because the whole
+    // screen is stones now -- but deliberately sparse and small, so the aura
+    // never competes with the hitbox for the eye.
     if (this.focus) {
       const a = this.pulse * 0.05;
-      g.strokeStyle = ship.color;
-      g.globalAlpha = (blink ? 0.3 : 0.7);
-      g.lineWidth = 1.4;
-      for (let k = 0; k < 2; k++) {
-        const rr = 18 - k * 5;
-        const dir = k ? -1 : 1;
-        for (let s = 0; s < 4; s++) {
-          g.beginPath();
-          g.arc(0, 0, rr, a * dir + s * TAU / 4, a * dir + s * TAU / 4 + 0.62);
-          g.stroke();
-        }
+      const outer = gemSprite('diamond', ship.color, 2.6);
+      const inner = gemSprite('diamond', C.ice, 2);
+      g.globalAlpha = base * 0.8;
+      for (let s = 0; s < 6; s++) {
+        const t = a + s * TAU / 6;
+        blit(g, outer, Math.cos(t) * 19, Math.sin(t) * 19, t);
       }
-      g.globalAlpha = blink ? 0.45 : 1;
+      for (let s = 0; s < 4; s++) {
+        const t = -a * 1.4 + s * TAU / 4;
+        blit(g, inner, Math.cos(t) * 13, Math.sin(t) * 13, t);
+      }
+      g.globalAlpha = base;
     }
 
-    // Hull: the ship's own silhouette, dark-filled with a bright outline.
-    g.rotate(-Math.PI / 2);
-    drawShape(g, ship.shape, 11, '#0b1524', C.ice, 1.8);
-    g.rotate(Math.PI / 2);
-
-    // Wings react to lateral movement.
+    // Wings: two crystal shards swept back, tilting with lateral movement.
     const tilt = clamp(this.vx / SPEED_FREE, -1, 1);
-    g.strokeStyle = ship.color;
-    g.lineWidth = 1.6;
-    g.globalAlpha *= 0.9;
-    g.beginPath();
-    g.moveTo(-13, 5 - tilt * 3); g.lineTo(-5, -2);
-    g.moveTo(13, 5 + tilt * 3); g.lineTo(5, -2);
-    g.stroke();
-    g.globalAlpha = blink ? 0.45 : 1;
+    const wing = gemSprite('kunai', ship.color, 4.2);
+    g.globalAlpha = base * 0.95;
+    blit(g, wing, -9, 3 - tilt * 2.5, Math.PI * 0.82 + tilt * 0.18);
+    blit(g, wing, 9, 3 + tilt * 2.5, Math.PI * 0.18 + tilt * 0.18);
+    g.globalAlpha = base;
 
-    // Hitbox dot -- always faintly visible, solid while focused.
+    // Thruster: a flickering prism of light under the hull.
+    const fl = 4 + Math.sin(this.pulse * 0.7) * 2;
+    g.globalAlpha = base * 0.85;
+    g.fillStyle = ship.color;
+    g.beginPath();
+    g.moveTo(-3.5, 8); g.lineTo(0, 8 + fl + 2); g.lineTo(3.5, 8);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.moveTo(-1.5, 8); g.lineTo(0, 8 + fl * 0.7); g.lineTo(1.5, 8);
+    g.closePath();
+    g.fill();
+    g.globalAlpha = base;
+
+    // Hull: the ship's cut in CLEAR crystal -- dark translucent facets with
+    // bright edges -- which is how it stays unmistakably not-a-bullet in a
+    // screen full of bright opaque stones.
+    blit(g, gemSprite(ship.shape, ship.color, 11, { glass: true, glow: 9 }), 0, 0, -Math.PI / 2);
+
+    // Hitbox dot -- always faintly visible, solid while focused. Untouched by
+    // the crystal pass on purpose: this is the one thing on screen whose look
+    // is a promise about the rules.
     g.fillStyle = this.focus ? C.red : 'rgba(255,90,80,0.55)';
     g.beginPath();
     g.arc(0, 0, this.focus ? 3.4 : 2.4, 0, TAU);
@@ -274,16 +300,8 @@ export class Player {
       g.stroke();
     }
 
-    // Thruster flicker.
-    g.globalAlpha = 0.8;
-    g.fillStyle = ship.color;
-    const fl = 4 + Math.sin(this.pulse * 0.7) * 2;
-    g.beginPath();
-    g.moveTo(-3.5, 9); g.lineTo(0, 9 + fl); g.lineTo(3.5, 9);
-    g.closePath();
-    g.fill();
-
     g.restore();
     g.globalAlpha = 1;
   }
+
 }

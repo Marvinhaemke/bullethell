@@ -121,14 +121,14 @@ if (wantShots) mkdirSync(new URL('./shots/', import.meta.url), { recursive: true
 // homing seekers are the deliberate exceptions and fade out visibly.
 console.log('Checking every phase for bullets expiring on screen...');
 const vanishing = await page.evaluate(() => {
-  const { game } = window.__BOSSRUSH;
+  const { game, BOSSES } = window.__BOSSRUSH;
   const bad = [];
   const roster = [];
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     game.debugStart(b, 2, 0);
     roster.push({ name: game.boss.def.name, phases: game.boss.def.phases.map((p) => p.name) });
   }
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     for (let ph = 0; ph < roster[b].phases.length; ph++) {
       let popped = 0;
       // Novice is the worst case: the slowest bullets, so the longest crossing.
@@ -179,7 +179,8 @@ if (vanishing.length) {
 console.log('boss  diff  frames  maxBullets  endPhase  bulletsLeft  note');
 console.log('-'.repeat(74));
 
-for (let boss = 0; boss < 5; boss++) {
+const bossCount = await page.evaluate(() => window.__BOSSRUSH.BOSSES.length);
+for (let boss = 0; boss < bossCount; boss++) {
   for (let diff = 0; diff < 5; diff++) {
     // Infinite lives so a hit never ends the case early; the player just sits
     // still, which is the harshest possible test of bullet volume.

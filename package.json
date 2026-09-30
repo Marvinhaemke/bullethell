@@ -1,7 +1,7 @@
 {
   "name": "bullet-hell-boss-rush",
   "version": "1.0.0",
-  "description": "A canvas bullet-hell boss rush: five bosses, twenty algorithmically generated patterns, five difficulty modes and three life modes.",
+  "description": "A canvas bullet-hell boss rush: six bosses, twenty-four algorithmically generated patterns, five difficulty modes and three life modes.",
   "type": "module",
   "private": true,
   "scripts": {
