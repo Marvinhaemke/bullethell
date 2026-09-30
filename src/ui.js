@@ -2,6 +2,7 @@
 
 import { TAU, clamp } from './mathx.js';
 import { C } from './config.js';
+import { gemSprite, blit } from './sprites.js';
 
 const MONO = 'ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace';
 
@@ -34,15 +35,50 @@ export function text(g, str, x, y, o = {}) {
   return g.measureText(str).width;
 }
 
+/** A chamfered outline -- the cut-glass corner every panel and bar shares. */
+export function chamfer(g, x, y, w, h, c) {
+  const k = Math.min(c, w / 2, h / 2);
+  g.moveTo(x + k, y);
+  g.lineTo(x + w - k, y);
+  g.lineTo(x + w, y + k);
+  g.lineTo(x + w, y + h - k);
+  g.lineTo(x + w - k, y + h);
+  g.lineTo(x + k, y + h);
+  g.lineTo(x, y + h - k);
+  g.lineTo(x, y + k);
+  g.closePath();
+}
+
+/**
+ * A pane of cut glass: chamfered corners, a faint violet body darkening
+ * downward, and a lit bevel along the top edge where the light from above
+ * catches it. The fill stays dark and mostly opaque on purpose -- every panel
+ * has text on it, and a HUD you have to squint at is not an improvement.
+ */
 export function panel(g, x, y, w, h, o = {}) {
-  g.fillStyle = o.fill || 'rgba(8,11,20,0.82)';
-  g.strokeStyle = o.stroke || '#1e2740';
-  g.lineWidth = o.lineWidth || 1;
+  const c = o.radius === undefined ? 7 : o.radius + 3;
+  if (o.fill) {
+    g.fillStyle = o.fill;
+  } else {
+    const gr = g.createLinearGradient(0, y, 0, y + h);
+    gr.addColorStop(0, 'rgba(24,18,54,0.88)');
+    gr.addColorStop(1, 'rgba(8,7,22,0.88)');
+    g.fillStyle = gr;
+  }
   g.beginPath();
-  const r = o.radius === undefined ? 4 : o.radius;
-  roundRect(g, x, y, w, h, r);
+  chamfer(g, x, y, w, h, c);
   g.fill();
-  if (o.stroke !== null) g.stroke();
+  if (o.stroke !== null) {
+    g.strokeStyle = o.stroke || 'rgba(128,108,230,0.30)';
+    g.lineWidth = o.lineWidth || 1;
+    g.stroke();
+    // The lit bevel.
+    g.strokeStyle = 'rgba(210,200,255,0.20)';
+    g.beginPath();
+    g.moveTo(x + c + 0.5, y + 0.5);
+    g.lineTo(x + w - c - 0.5, y + 0.5);
+    g.stroke();
+  }
 }
 
 export function roundRect(g, x, y, w, h, r) {
@@ -55,34 +91,54 @@ export function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
-export function bar(g, x, y, w, h, frac, color, bg = '#131a2b') {
+/** A crystal bar: lit along its top, darker beneath, with a bright leading edge. */
+export function bar(g, x, y, w, h, frac, color, bg = '#110d26') {
   g.fillStyle = bg;
   g.fillRect(x, y, w, h);
   const fw = Math.max(0, Math.min(1, frac)) * w;
-  g.fillStyle = color;
-  g.fillRect(x, y, fw, h);
-  g.strokeStyle = 'rgba(255,255,255,0.14)';
+  if (fw > 0) {
+    g.fillStyle = color;
+    g.fillRect(x, y, fw, h);
+    g.fillStyle = 'rgba(255,255,255,0.28)';
+    g.fillRect(x, y, fw, Math.max(1, h * 0.34));
+    g.fillStyle = 'rgba(0,0,0,0.22)';
+    g.fillRect(x, y + h * 0.66, fw, h * 0.34);
+    g.fillStyle = 'rgba(255,255,255,0.7)';
+    g.fillRect(x + fw - 1, y, 1, h);
+  }
+  g.strokeStyle = 'rgba(210,200,255,0.16)';
   g.lineWidth = 1;
   g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 }
 
-/** Segmented meter used for lives and bombs. */
+/** Segmented meter used for lives and bombs: a row of stones, spent ones hollow. */
 export function pips(g, x, y, count, max, color, shape = 'square', size = 6, gap = 11) {
+  const cut = shape === 'tri' ? 'tri' : shape === 'circle' ? 'circle' : 'square';
+  const r = size * 0.62;
+  const full = gemSprite(cut, color, r, { glow: 5 });
   for (let i = 0; i < max; i++) {
     const cx = x + i * gap;
-    g.beginPath();
-    if (shape === 'tri') {
-      g.moveTo(cx, y - size * 0.7);
-      g.lineTo(cx + size * 0.7, y + size * 0.6);
-      g.lineTo(cx - size * 0.7, y + size * 0.6);
-      g.closePath();
-    } else if (shape === 'circle') {
-      g.arc(cx, y, size * 0.55, 0, TAU);
+    if (i < count) {
+      blit(g, full, cx, y, cut === 'tri' ? -Math.PI / 2 : 0);
     } else {
-      g.rect(cx - size * 0.5, y - size * 0.5, size, size);
+      g.save();
+      g.translate(cx, y);
+      if (cut === 'tri') g.rotate(-Math.PI / 2);
+      g.beginPath();
+      if (cut === 'circle') g.arc(0, 0, r, 0, TAU);
+      else if (cut === 'tri') {
+        for (let k = 0; k < 3; k++) {
+          const a = k * TAU / 3;
+          if (k === 0) g.moveTo(Math.cos(a) * r * 1.12, Math.sin(a) * r * 1.12);
+          else g.lineTo(Math.cos(a) * r * 1.12, Math.sin(a) * r * 1.12);
+        }
+        g.closePath();
+      } else g.rect(-r * 0.84, -r * 0.84, r * 1.68, r * 1.68);
+      g.strokeStyle = '#322a58';
+      g.lineWidth = 1;
+      g.stroke();
+      g.restore();
     }
-    if (i < count) { g.fillStyle = color; g.fill(); }
-    else { g.strokeStyle = '#2b3650'; g.lineWidth = 1; g.stroke(); }
   }
 }
 
@@ -149,18 +205,21 @@ export class Menu {
       const dim = it.disabled && it.disabled();
 
       if (active) {
-        const glow = 0.10 + 0.05 * Math.sin(this.t * 0.09);
-        g.fillStyle = `rgba(90,160,255,${glow})`;
+        // A cut-glass bar that fades out to the right, and a stone to mark
+        // the row -- the crystal version of the old highlight and caret.
+        const glow = 0.16 + 0.06 * Math.sin(this.t * 0.09);
+        const gr = g.createLinearGradient(x - 14, 0, x + w + 14, 0);
+        gr.addColorStop(0, `rgba(120,110,255,${glow + 0.08})`);
+        gr.addColorStop(0.7, `rgba(90,150,255,${glow * 0.6})`);
+        gr.addColorStop(1, 'rgba(90,150,255,0)');
+        g.fillStyle = gr;
         g.beginPath();
-        roundRect(g, x - 14, cy - size - 6, w + 28, size + 18, 3);
+        chamfer(g, x - 14, cy - size - 6, w + 28, size + 18, 6);
         g.fill();
-        g.fillStyle = C.cyan;
-        g.beginPath();
-        g.moveTo(x - 22, cy - size * 0.55);
-        g.lineTo(x - 22, cy + size * 0.35);
-        g.lineTo(x - 13, cy - size * 0.1);
-        g.closePath();
-        g.fill();
+        g.fillStyle = `rgba(220,215,255,${0.22 + glow * 0.4})`;
+        g.fillRect(x - 8, cy - size - 6, w * 0.6, 1);
+        const bob = Math.sin(this.t * 0.12) * 1.2;
+        blit(g, gemSprite('diamond', C.cyan, 5, { glow: 7 }), x - 20 + bob, cy - size * 0.3, this.t * 0.03);
       }
 
       const col = dim ? '#4b5573' : active ? C.white : '#93a2c4';

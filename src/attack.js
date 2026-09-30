@@ -19,6 +19,7 @@ import { TAU, PI, HALF_PI, clamp, angleTo } from './mathx.js';
 import { PLAY, C } from './config.js';
 import { RNG } from './rng.js';
 import { Laser } from './lasers.js';
+import { Pane, MAX_PANES, shatterPanes } from './panes.js';
 import { clampLife } from './bullets.js';
 
 export class Attack {
@@ -175,6 +176,16 @@ export class Attack {
       b.splitT = o.split.t || 40;
     }
     if (o.homeT) { b.homeT = o.homeT; b.homeK = o.homeK === undefined ? 0.02 : o.homeK; }
+    if (o.refract) {
+      // Start the bullet knowing which side of every pane it is on. One born
+      // already inside a crystal -- the boss dipped below the pane -- is marked
+      // as through it, so it never bends at a surface it did not cross.
+      b.refract = true;
+      const panes = this.game.panes;
+      for (let k = 0; k < panes.length; k++) {
+        if (panes[k].side(x, y) >= 0) { b.pside |= 1 << k; b.pdone |= 1 << k; }
+      }
+    }
     if (o.orbit) {
       const ob = o.orbit;
       b.orbT = ob.t || 60;
@@ -350,6 +361,26 @@ export class Attack {
     this.game.lasers.push(l);
     this.sfx('laser', 120);
     return l;
+  }
+
+  /**
+   * Raise a crystal pane (see panes.js). At most MAX_PANES at once; a pattern
+   * that wants a different arrangement clears them first.
+   */
+  pane(o) {
+    const panes = this.game.panes;
+    if (panes.length >= MAX_PANES) panes.shift();
+    const p = new Pane(o);
+    panes.push(p);
+    this.game.bullets.rebasePanes(panes);
+    this.sfx('phase', 60);
+    return p;
+  }
+
+  /** Shatter every pane: they break into falling glass, visibly. */
+  clearPanes() {
+    shatterPanes(this.game);
+    this.game.bullets.rebasePanes(this.game.panes);
   }
 
   /** Decorative marker (no collision) -- used to show satellite emitters. */

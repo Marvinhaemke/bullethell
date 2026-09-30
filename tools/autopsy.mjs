@@ -1,6 +1,6 @@
 // What actually kills you on a phase, and when.
 //
-//   node tools/autopsy.mjs --boss 5 --phase 4 [--diff 1] [--trials 12]
+//   node tools/autopsy.mjs --boss 6 --phase 4 [--diff 1] [--trials 12]
 //
 // The margin sweep says a phase is tight; it does not say which of the four
 // things happening at once is doing the killing. This runs the dodging bot

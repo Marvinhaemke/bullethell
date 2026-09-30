@@ -8,7 +8,8 @@
 
 import { TAU, PI, clamp } from './mathx.js';
 import { PLAY, MAX_BULLETS } from './config.js';
-import { bulletSprite, DIRECTIONAL } from './sprites.js';
+import { bulletSprite, glintSprite, DIRECTIONAL, spriteGen } from './sprites.js';
+import { refract, SPECTRUM } from './panes.js';
 
 // Generous top margin: ballistic patterns lob bullets high above the field.
 const CULL_TOP = 340;
@@ -65,6 +66,15 @@ export class Bullet {
     this.rot = 0; this.spin = 0;
     this.harmless = false;      // decorative markers
     this.grazed = false;
+    // Twinkle phase. Purely cosmetic -- it picks which frames this gem catches
+    // the light on, so a field of bullets glitters a few at a time rather than
+    // all at once. Math.random rather than the pattern's seeded stream on
+    // purpose: nothing about play may depend on it.
+    this.tw = (Math.random() * 64) | 0;
+    // The sprite this bullet was last drawn with, and what it was looked up
+    // by. Checking three fields is far cheaper than building the cache key
+    // string for every bullet on every frame.
+    this.spr = null; this.sprShape = ''; this.sprColor = ''; this.sprR = 0; this.sprGen = -1;
 
     // Linear acceleration (gravity / wind).
     this.ax = 0; this.ay = 0;
@@ -102,6 +112,12 @@ export class Bullet {
 
     // Soft homing for a limited window.
     this.homeT = 0; this.homeK = 0;
+
+    // Crystal panes (see panes.js). `refract` opts a bullet in; `pside` has a
+    // bit set for each pane the bullet is currently beyond, and `pdone` one
+    // for each pane it has already passed through -- a bullet bends at a given
+    // pane once, which is what keeps where it will go readable.
+    this.refract = false; this.pside = 0; this.pdone = 0;
 
     // Orbit-then-release ("charge up a gear, then fire it outward").
     this.orbT = 0; this.orbCx = 0; this.orbCy = 0;
@@ -190,13 +206,17 @@ export class BulletPool {
         const mode = b.goMode;
         if (mode === 'aim') ang = Math.atan2(py - b.y, px - b.x);
         else if (mode === 'radial') ang = b.heldAngle;
-        else if (typeof mode === 'number') ang = b.heldAngle + mode;
+        else if (typeof mode === 'number') ang = mode;
         else ang = b.heldAngle;
         ang += b.goSpin;
         const sp = b.goSpeed || 2;
         b.vx = Math.cos(ang) * sp;
         b.vy = Math.sin(ang) * sp;
         b.frozen = false;
+        // A relaunch is a new trajectory at `goSpeed`. Any acceleration was
+        // the approach to the stop -- Dendrite's flakes decelerate into their
+        // final shape -- and left running it would slow the relaunch too.
+        b.accel = 0;
       }
 
       if (!b.frozen) {
@@ -267,6 +287,37 @@ export class BulletPool {
           b.y += ny * k;
         }
 
+        // --- crystal panes ---------------------------------------------------
+        if (b.refract) {
+          const panes = game.panes;
+          let split = null;
+          for (let k = 0; k < panes.length; k++) {
+            const bit = 1 << k;
+            if (b.pdone & bit) continue;
+            const p = panes[k];
+            const s = p.side(b.x, b.y);
+            const beyond = (b.pside & bit) !== 0;
+            if (s >= 0 && !beyond) {
+              if (p.spans(b.x, b.y)) {
+                const r = refract(b, p);
+                if (r !== 'reflect') {
+                  b.pside |= bit; b.pdone |= bit;
+                  if (r === 'split') { split = p; break; }
+                }
+              } else {
+                b.pside |= bit;        // went round the end of it
+              }
+            } else if (s < 0 && beyond) {
+              b.pside &= ~bit;
+            }
+          }
+          if (split) {
+            this.disperse(b, split);
+            this.remove(i); i--;
+            continue;
+          }
+        }
+
         // --- wall bounces ---------------------------------------------------
         if (b.bounce > 0) {
           if (b.x < PLAY.x + b.r && b.vx < 0) { b.vx = -b.vx; b.x = PLAY.x + b.r; b.bounce--; b.bounced++; }
@@ -292,6 +343,56 @@ export class BulletPool {
       if (b.x < PLAY.x - CULL_SIDE || b.x > PLAY.right + CULL_SIDE ||
           b.y > PLAY.bottom + CULL_SIDE || b.y < PLAY.y - CULL_TOP) {
         this.remove(i); i--;
+      }
+    }
+  }
+
+  /**
+   * White light into a spectrum: replace `b` with a fan of bullets in the
+   * colours of the rainbow, centred on its (already refracted) heading. Red
+   * bends least and violet most, as in a real prism, so the fan always comes
+   * out in the same order and the same way round.
+   */
+  disperse(b, p) {
+    const d = p.disperse;
+    const n = Math.max(2, d.n | 0);
+    const base = Math.atan2(b.vy, b.vx);
+    const sp = d.speed || Math.hypot(b.vx, b.vy);
+    const spread = d.spread === undefined ? 0.5 : d.spread;
+    // Which way is "toward the normal" for this bullet: violet is bent most,
+    // so it goes on that side of the fan and red on the other. A bullet
+    // heading down-left and one heading down-right come out mirror images,
+    // the way the two sides of a real prism's spectrum do.
+    const toward = b.vx * p.ny - b.vy * p.nx >= 0 ? 1 : -1;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1) - 0.5;
+      const ang = base + toward * t * spread;
+      const c = this.spawn();
+      c.x = b.x; c.y = b.y;
+      c.vx = Math.cos(ang) * sp;
+      c.vy = Math.sin(ang) * sp;
+      c.r = d.r || b.r * 0.8;
+      c.hr = c.r * 0.76;
+      c.shape = d.shape || b.shape;
+      // Spread the palette across however many fragments there are, so three
+      // is red-green-violet and seven is the whole rainbow.
+      c.color = SPECTRUM[Math.round(i / (n - 1) * (SPECTRUM.length - 1))];
+    }
+  }
+
+  /**
+   * Re-mark every refracting bullet against a changed set of panes. The
+   * crossing bits are indexed by a pane's slot in the list, so adding,
+   * removing or replacing one invalidates them; a bullet already beyond a new
+   * pane counts as through it, the same rule as for one spawned there.
+   */
+  rebasePanes(panes) {
+    for (let i = 0; i < this.n; i++) {
+      const b = this.a[i];
+      if (!b.refract) continue;
+      b.pside = 0; b.pdone = 0;
+      for (let k = 0; k < panes.length; k++) {
+        if (panes[k].side(b.x, b.y) >= 0) { b.pside |= 1 << k; b.pdone |= 1 << k; }
       }
     }
   }
@@ -333,9 +434,30 @@ export class BulletPool {
   }
 
   draw(g) {
+    const glint = glintSprite();
+    // The transform the playfield is drawn under (device scale, screen
+    // shake). Rotated gems compose onto it with one setTransform each rather
+    // than a save/translate/rotate/restore -- a state push and pop per bullet
+    // was the single largest cost of drawing a dense field of kunai.
+    const m = g.getTransform();
+    const ma = m.a, mb = m.b, mc = m.c, md = m.d, me = m.e, mf = m.f;
+    let moved = false;
+    // Anything wholly outside the field is clipped anyway. Ring halves flying
+    // off the top and light reflected back up by a pane spend hundreds of
+    // frames up there; drawing them cost as much as drawing the pattern.
+    const x0 = PLAY.x - 24, x1 = PLAY.right + 24, y0 = PLAY.y - 24, y1 = PLAY.bottom + 24;
+
     for (let i = 0; i < this.n; i++) {
       const b = this.a[i];
-      const sprite = bulletSprite(b.shape, b.color, b.r);
+      if (b.x < x0 || b.x > x1 || b.y < y0 || b.y > y1) continue;
+
+      let sprite = b.spr;
+      if (sprite === null || b.sprGen !== spriteGen || b.sprShape !== b.shape ||
+          b.sprColor !== b.color || b.sprR !== b.r) {
+        sprite = bulletSprite(b.shape, b.color, b.r);
+        b.spr = sprite; b.sprGen = spriteGen;
+        b.sprShape = b.shape; b.sprColor = b.color; b.sprR = b.r;
+      }
       const s = sprite.size;
       // Bullets pop in over ~5 frames so dense volleys read as a wave.
       const grow = b.age < 5 ? 0.55 + 0.09 * b.age : 1;
@@ -352,24 +474,44 @@ export class BulletPool {
         g.globalAlpha = Math.max(0, left / FADE_FRAMES);
       }
 
-      const rotated = b.rot !== 0 || DIRECTIONAL.has(b.shape);
-      if (rotated || grow !== 1) {
-        g.save();
-        g.translate(b.x, b.y);
-        if (rotated) {
-          g.rotate(DIRECTIONAL.has(b.shape) && !b.frozen && (b.vx || b.vy)
-            ? Math.atan2(b.vy, b.vx) + b.rot
-            : b.rot);
-        }
-        if (grow !== 1) g.scale(grow, grow);
+      const directional = DIRECTIONAL.has(b.shape);
+      if (b.rot !== 0 || directional || grow !== 1) {
+        const ang = directional && !b.frozen && (b.vx || b.vy)
+          ? Math.atan2(b.vy, b.vx) + b.rot
+          : b.rot;
+        const cs = Math.cos(ang) * grow, sn = Math.sin(ang) * grow;
+        g.setTransform(
+          ma * cs + mc * sn, mb * cs + md * sn,
+          mc * cs - ma * sn, md * cs - mb * sn,
+          ma * b.x + mc * b.y + me, mb * b.x + md * b.y + mf,
+        );
+        moved = true;
         g.drawImage(sprite.canvas, -sprite.half, -sprite.half, s, s);
-        g.restore();
       } else {
+        if (moved) { g.setTransform(ma, mb, mc, md, me, mf); moved = false; }
         g.drawImage(sprite.canvas, b.x - sprite.half, b.y - sprite.half, s, s);
       }
 
-      if (b.frozen || fading) g.globalAlpha = 1;
+      // Glint. One gem in seven is catching the light on any given frame, for
+      // nine frames out of every sixty-four; the star swells and fades over
+      // that window. Screen-aligned, drawn after the gem, and skipped for the
+      // smallest pellets, where a glint the size of the bullet reads as a
+      // second bullet.
+      const tw = (b.age + b.tw) & 63;
+      if (tw < 9 && b.r >= 3.6) {
+        if (moved) { g.setTransform(ma, mb, mc, md, me, mf); moved = false; }
+        const k = Math.sin((tw + 0.5) * Math.PI / 9);
+        const gs = glint;
+        const sc = Math.max(0.42, b.r / 9) * (0.6 + 0.4 * k);
+        const hs = gs.half * sc, ss = gs.size * sc;
+        g.globalAlpha = k * (fading ? Math.max(0, left / FADE_FRAMES) : 1);
+        g.drawImage(gs.canvas, b.x - b.r * 0.3 - hs, b.y - b.r * 0.35 - hs, ss, ss);
+        g.globalAlpha = 1;
+      } else if (b.frozen || fading) {
+        g.globalAlpha = 1;
+      }
     }
+    if (moved) g.setTransform(ma, mb, mc, md, me, mf);
   }
 
   /**

@@ -81,9 +81,9 @@ console.log(JSON.stringify(res, null, 2));
 
 // --- render cost at high bullet counts -------------------------------------
 const perf = await page.evaluate(async () => {
-  const { game } = window.__BOSSRUSH;
+  const { game, BOSSES } = window.__BOSSRUSH;
   const out = [];
-  for (const boss of [0, 1, 2, 3, 4]) {
+  for (const boss of BOSSES.keys()) {
     game.debugStart(boss, 4, 0);
     for (let i = 0; i < 900; i++) game.update();
     const peak = game.bullets.count;

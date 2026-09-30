@@ -48,15 +48,15 @@ await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await page.waitForFunction(() => !!window.__BOSSRUSH);
 
 const rows = await page.evaluate(({ diff, frames }) => {
-  const { game } = window.__BOSSRUSH;
+  const { game, BOSSES } = window.__BOSSRUSH;
   const out = [];
   const roster = [];
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     game.debugStart(b, 2, 0);
     roster.push({ name: game.boss.def.name, phases: game.boss.def.phases.map((p) => p.name) });
   }
 
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     for (let ph = 0; ph < roster[b].phases.length; ph++) {
       game.settings.autopilot = true;
       game.settings.autofire = true;

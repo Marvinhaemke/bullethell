@@ -1,7 +1,7 @@
 // Read a run log back and summarise it.
 //
 //   node tools/deaths.mjs bossrush-log.json   # a log exported from the game
-//   node tools/deaths.mjs --bot --boss 5      # generate one with the dodging bot
+//   node tools/deaths.mjs --bot --boss 6      # generate one with the dodging bot
 //
 // The game records deaths, pattern attempts and runs (src/runlog.js) as they
 // happen. Get the file with DOWNLOAD LOG in the main or pause menu -- no
@@ -133,11 +133,11 @@ if (USE_BOT) {
   await page.waitForFunction(() => !!window.__BOSSRUSH);
 
   entries = await page.evaluate(([bosses, trials, frames]) => {
-    const { game: g } = window.__BOSSRUSH;
+    const { game: g, BOSSES } = window.__BOSSRUSH;
     g.log.clear();
     g.settings.autopilot = true;
     g.settings.autofire = true;
-    for (const bi of bosses) {
+    for (const bi of bosses || BOSSES.map((_, i) => i)) {
       for (let di = 0; di < 5; di++) {
         const probe = () => { g.debugStart(bi, di, 0); return g.boss.def.phases.length; };
         const phases = probe();
@@ -161,7 +161,7 @@ if (USE_BOT) {
       }
     }
     return g.log.deaths;
-  }, [BOSS === null ? [0, 1, 2, 3, 4] : [BOSS], TRIALS, FRAMES]);
+  }, [BOSS === null ? null : [BOSS], TRIALS, FRAMES]);
 
   await browser.close();
   server.kill();

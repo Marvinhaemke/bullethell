@@ -1,7 +1,7 @@
 // Difficulty sweep on space AND predictability.
 //
-//   node tools/difficulty.mjs [--frames 1200] [--starts 2] [--boss 5]
-//   node tools/difficulty.mjs --detail --boss 5 --phase 4
+//   node tools/difficulty.mjs [--frames 1200] [--starts 2] [--boss 6]
+//   node tools/difficulty.mjs --detail --boss 6 --phase 4
 //
 // WHY THIS EXISTS
 //
@@ -926,9 +926,9 @@ const PLAYER_SPEED = await page.evaluate(() => {
 });
 
 const roster = await page.evaluate(() => {
-  const { game } = window.__BOSSRUSH;
+  const { game, BOSSES } = window.__BOSSRUSH;
   const out = [];
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < BOSSES.length; b++) {
     game.debugStart(b, 2, 0);
     out.push({ name: game.boss.def.name, phases: game.boss.def.phases.map((p) => p.name) });
   }
@@ -936,7 +936,7 @@ const roster = await page.evaluate(() => {
 });
 
 const DIFFN = ['NOVICE', 'EASY', 'NORMAL', 'HARD', 'LUNATIC'];
-const bosses = ONLY_BOSS === null ? [0, 1, 2, 3, 4] : [ONLY_BOSS];
+const bosses = ONLY_BOSS === null ? roster.map((_, i) => i) : [ONLY_BOSS];
 
 /**
  * Fold the axes into one number of pixels, calibrated against a player log.

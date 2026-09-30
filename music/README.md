@@ -29,7 +29,7 @@ entry — every generator preserves anything you add:
 }
 ```
 
-Valid `for` values: `menu`, `boss1` … `boss5`, `results`. A scene with nothing
+Valid `for` values: `menu`, `boss1` … `boss6`, `results`. A scene with nothing
 pinned to it falls back to the rotation, so pinning some and not others works
 fine. Add `"loop": false` to an entry to play it once instead of looping.
 

@@ -86,7 +86,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (tracks.length) {
     const pinned = tracks.filter((t) => t.for).length;
     console.log(`\n${pinned} of ${tracks.length} pinned to a scene with "for".`);
-    console.log('Unpinned tracks rotate as a playlist. Add "for": "menu" | "boss1".."boss5" |');
+    console.log('Unpinned tracks rotate as a playlist. Add "for": "menu" | "boss1".."boss6" |');
     console.log('"results" to an entry to pin it. Values are matched in that order, and a');
     console.log('scene with nothing pinned to it falls back to the rotation.');
   }

@@ -17,7 +17,7 @@ const FADE_MS = 700;
 const FADE_STEP_MS = 40;
 
 /** Scene cues, in the order a track's `for` field is matched against. */
-export const CUES = ['menu', 'boss1', 'boss2', 'boss3', 'boss4', 'boss5', 'results'];
+export const CUES = ['menu', 'boss1', 'boss2', 'boss3', 'boss4', 'boss5', 'boss6', 'results'];
 
 export class Music {
   constructor() {

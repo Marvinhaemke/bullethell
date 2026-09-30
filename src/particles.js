@@ -1,7 +1,7 @@
 // Pooled cosmetic effects: sparks, expanding rings, drifting shards, score pops.
 
 import { TAU } from './mathx.js';
-import { shapePath } from './sprites.js';
+import { tint, glintSprite } from './sprites.js';
 
 class Particle {
   constructor() { this.init(); }
@@ -17,6 +17,9 @@ class Particle {
     this.text = '';
     this.alpha = 1;
     this.width = 2;
+    // A shard's two faces, worked out once at spawn rather than every frame.
+    this.lit = '#ffffff';
+    this.dark = '#ffffff';
   }
 }
 
@@ -65,6 +68,8 @@ export class Particles {
       p.color = color;
       p.shape = shape;
       p.drag = 0.95;
+      p.lit = tint(color, 0.45);
+      p.dark = tint(color, -0.4);
     }
   }
 
@@ -116,27 +121,43 @@ export class Particles {
   }
 
   draw(g) {
+    const glint = glintSprite();
     for (let i = 0; i < this.n; i++) {
       const p = this.a[i];
       const t = 1 - p.age / p.life;
       g.globalAlpha = Math.max(0, t);
       switch (p.kind) {
         case 'ring':
+          // A shock ring with a thin bright inner edge, like light refracting
+          // round the rim of a lens.
           g.strokeStyle = p.color;
           g.lineWidth = p.width * t;
           g.beginPath();
           g.arc(p.x, p.y, p.size, 0, TAU);
           g.stroke();
+          g.strokeStyle = '#ffffff';
+          g.globalAlpha = Math.max(0, t) * 0.5;
+          g.lineWidth = Math.max(0.5, p.width * t * 0.35);
+          g.beginPath();
+          g.arc(p.x, p.y, Math.max(0, p.size - p.width * t * 0.9), 0, TAU);
+          g.stroke();
           break;
-        case 'shard':
-          g.save();
-          g.translate(p.x, p.y);
-          g.rotate(p.rot);
-          g.fillStyle = p.color;
-          shapePath(g, p.shape, p.size * t);
-          g.fill();
-          g.restore();
+        case 'shard': {
+          // A crystal fragment: a thin kite split down its ridge into a lit
+          // face and a dark one. Two triangles, no save/restore -- the
+          // rotation is done by hand, because a boss breaking throws dozens.
+          const sz = p.size * (0.4 + 0.6 * t);
+          const c = Math.cos(p.rot), s = Math.sin(p.rot);
+          const tx = p.x + c * sz * 1.7, ty = p.y + s * sz * 1.7;
+          const bx = p.x - c * sz * 0.9, by = p.y - s * sz * 0.9;
+          const lx = p.x - s * sz * 0.62, ly = p.y + c * sz * 0.62;
+          const rx = p.x + s * sz * 0.62, ry = p.y - c * sz * 0.62;
+          g.fillStyle = p.lit;
+          g.beginPath(); g.moveTo(tx, ty); g.lineTo(rx, ry); g.lineTo(bx, by); g.closePath(); g.fill();
+          g.fillStyle = p.dark;
+          g.beginPath(); g.moveTo(tx, ty); g.lineTo(bx, by); g.lineTo(lx, ly); g.closePath(); g.fill();
           break;
+        }
         case 'text':
           g.fillStyle = p.color;
           g.font = '600 13px ui-monospace, Menlo, Consolas, monospace';
@@ -149,6 +170,12 @@ export class Particles {
           g.beginPath();
           g.arc(p.x, p.y, p.size * t, 0, TAU);
           g.fill();
+          // The bigger sparks flare as they fly: a glint laid over the dot
+          // for the first half of their life.
+          if (p.size > 2.4 && t > 0.5) {
+            const k = (t - 0.5) * 2 * p.size * 0.14;
+            g.drawImage(glint.canvas, p.x - glint.half * k, p.y - glint.half * k, glint.size * k, glint.size * k);
+          }
           break;
       }
     }
